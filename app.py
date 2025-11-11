@@ -479,9 +479,9 @@ async def search_movie(movie: MovieRequest):
 
         # LinkedIn enrichment is optional - don't block API if it fails or times out
         try:
-            await asyncio.wait_for(enrich_crew_with_linkedin(vfx_crew), timeout=30.0)
+            await asyncio.wait_for(enrich_crew_with_linkedin(vfx_crew), timeout=120.0)
         except asyncio.TimeoutError:
-            logger.warning(f"LinkedIn enrichment timed out after 30s")
+            logger.warning(f"LinkedIn enrichment timed out after 120s")
         except Exception as e:
             logger.warning(f"LinkedIn enrichment failed: {e}")
 
