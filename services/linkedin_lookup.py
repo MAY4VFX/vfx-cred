@@ -104,7 +104,7 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
             try:
                 logger.debug("Отключены переменные прокси для инициализации LinkdAPI")
                 _CLIENT = AsyncLinkdAPI(
-                    LINKDAPI_API_KEY,
+                    api_key=LINKDAPI_API_KEY,
                     timeout=LINKDAPI_TIMEOUT,
                     max_retries=LINKDAPI_MAX_RETRIES,
                     retry_delay=LINKDAPI_RETRY_DELAY,
