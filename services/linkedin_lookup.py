@@ -7,6 +7,10 @@ import re
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
+# Disable SOCKS proxy before importing LinkdAPI (LinkdAPI doesn't work with SOCKS proxy from requests)
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+
 try:  # pragma: no cover - внешняя зависимость
     from linkdapi import AsyncLinkdAPI
 except ImportError:  # pragma: no cover - опциональная зависимость
@@ -90,10 +94,6 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
             logger.debug("LinkdAPI клиент ранее был отключён")
             return None
         try:
-            # Disable SOCKS proxy for LinkdAPI (we don't need it for official API service)
-            old_http_proxy = os.environ.pop("HTTP_PROXY", None)
-            old_https_proxy = os.environ.pop("HTTPS_PROXY", None)
-
             logger.info("Инициализация LinkdAPI клиента...")
             _CLIENT = AsyncLinkdAPI(
                 LINKDAPI_API_KEY,
@@ -103,20 +103,9 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
             )
             logger.info("LinkdAPI клиент успешно инициализирован")
 
-            # Restore proxy settings
-            if old_http_proxy:
-                os.environ["HTTP_PROXY"] = old_http_proxy
-            if old_https_proxy:
-                os.environ["HTTPS_PROXY"] = old_https_proxy
-
         except Exception as exc:  # pragma: no cover - внешняя зависимость
             logger.warning("Не удалось инициализировать LinkdAPI-клиент: %s", exc)
             _CLIENT = None
-            # Restore proxy settings even on error
-            if 'old_http_proxy' in locals() and old_http_proxy:
-                os.environ["HTTP_PROXY"] = old_http_proxy
-            if 'old_https_proxy' in locals() and old_https_proxy:
-                os.environ["HTTPS_PROXY"] = old_https_proxy
         _CLIENT_INITIALIZED = True
         return _CLIENT
 
