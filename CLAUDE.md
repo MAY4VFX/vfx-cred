@@ -178,6 +178,32 @@ docker-compose up -d
 
 Service runs on `0.0.0.0:8000` with automatic health checks and restart policy.
 
+### Dokploy Deployment
+
+Configure the following in Dokploy UI:
+
+**Application Settings:**
+- Build Type: `dockerfile`
+- Port: `8000` (container) → `8010` (host)
+
+**Environment Variables:**
+```
+TMDB_API_KEY=<your_api_key>
+TMDB_BASE_URL=https://api.themoviedb.org/3
+PORT=8000
+HOST=0.0.0.0
+HTTPS_PROXY=socks5://<proxy_host>:<proxy_port>  # Optional for geo-blocking
+HTTP_PROXY=socks5://<proxy_host>:<proxy_port>   # Optional for geo-blocking
+```
+
+**GitHub Integration:**
+- Source: GitHub
+- Repository: `MAY4VFX/vfx-cred`
+- Branch: `main`
+- Auto-deploy: Enabled
+
+Any changes pushed to main branch will automatically trigger redeployment.
+
 ### Production Considerations
 
 - Use environment variables for sensitive data (API keys)
