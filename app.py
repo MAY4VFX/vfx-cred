@@ -141,31 +141,23 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[Dict]:
             "api_key": TMDB_API_KEY,
             "external_source": "imdb_id"
         }
-        print(f"DEBUG: Getting TMDB ID for {imdb_id}, Using proxies: {PROXIES}")
         response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
-        print(f"DEBUG: Response status for {imdb_id}: {response.status_code}")
         response.raise_for_status()
         data = response.json()
-        print(f"DEBUG: API Response for {imdb_id}: {data}")
 
         # Check movie results
         if data.get("movie_results"):
             tmdb_id = str(data["movie_results"][0]["id"])
-            print(f"DEBUG: Found TMDB movie ID {tmdb_id} for IMDB {imdb_id}")
             return {"id": tmdb_id, "type": "movie"}
 
         # Also check TV results
         if data.get("tv_results"):
             tmdb_id = str(data["tv_results"][0]["id"])
-            print(f"DEBUG: Found TMDB TV ID {tmdb_id} for IMDB {imdb_id} (TV series)")
             return {"id": tmdb_id, "type": "tv"}
 
-        print(f"DEBUG: No movie/TV results found for {imdb_id}")
         return None
     except Exception as e:
         print(f"Error converting IMDB ID {imdb_id}: {e}")
-        import traceback
-        traceback.print_exc()
         return None
 
 
