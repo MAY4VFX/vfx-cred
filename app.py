@@ -423,6 +423,53 @@ async def export_data(vfx_crew: List[Dict]):
         raise HTTPException(status_code=500, detail=f"Error exporting data: {str(e)}")
 
 
+@app.post("/api/get-all-crew")
+async def get_all_crew(movie: MovieRequest):
+    """Get all crew members WITHOUT filtering - for understanding TMDb structure"""
+    try:
+        tmdb_info = None
+
+        if movie.imdb_id:
+            imdb_id = extract_imdb_id(movie.imdb_id)
+            if imdb_id:
+                tmdb_info = get_tmdb_id_from_imdb(imdb_id)
+
+        if not tmdb_info:
+            raise HTTPException(status_code=404, detail="Movie not found")
+
+        tmdb_id = tmdb_info.get("id")
+        media_type = tmdb_info.get("type", "movie")
+
+        credits = get_movie_credits(tmdb_id, media_type)
+
+        if not credits or "crew" not in credits:
+            raise HTTPException(status_code=404, detail="Credits not found")
+
+        # Group by department and job
+        hierarchy = {}
+        for member in credits["crew"]:
+            dept = member.get("department", "Unknown")
+            job = member.get("job", "Unknown")
+
+            if dept not in hierarchy:
+                hierarchy[dept] = {}
+            if job not in hierarchy[dept]:
+                hierarchy[dept][job] = []
+
+            hierarchy[dept][job].append(member.get("name", "Unknown"))
+
+        return {
+            "success": True,
+            "total_crew": len(credits["crew"]),
+            "hierarchy": hierarchy
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
