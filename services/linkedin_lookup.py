@@ -94,33 +94,32 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
         try:
             logger.info("Инициализация LinkdAPI клиента...")
 
-            # Temporarily disable proxy environment variables to prevent LinkdAPI from using SOCKS
-            # These variables are needed for other APIs but break LinkdAPI initialization
-            saved_http_proxy = os.environ.pop("HTTP_PROXY", None)
-            saved_https_proxy = os.environ.pop("HTTPS_PROXY", None)
-            saved_http_proxy_lower = os.environ.pop("http_proxy", None)
-            saved_https_proxy_lower = os.environ.pop("https_proxy", None)
-
-            try:
-                logger.debug("Отключены переменные прокси для инициализации LinkdAPI")
+            if httpx is not None:
+                # Create httpx client with explicit proxy=None to prevent using SOCKS from environment
+                # This allows LinkdAPI to work even when HTTP_PROXY/HTTPS_PROXY are set for other APIs
+                logger.debug("Создание httpx.AsyncClient с отключённым прокси")
+                http_client = httpx.AsyncClient(
+                    timeout=LINKDAPI_TIMEOUT,
+                    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+                    proxy=None,  # Explicitly disable proxy for this client
+                    verify=False,  # Skip SSL verification since we trust the API host
+                )
+                _CLIENT = AsyncLinkdAPI(
+                    LINKDAPI_API_KEY,
+                    client=http_client,
+                    timeout=LINKDAPI_TIMEOUT,
+                    max_retries=LINKDAPI_MAX_RETRIES,
+                    retry_delay=LINKDAPI_RETRY_DELAY,
+                )
+                logger.info("LinkdAPI клиент успешно инициализирован с отключённым прокси")
+            else:
                 _CLIENT = AsyncLinkdAPI(
                     LINKDAPI_API_KEY,
                     timeout=LINKDAPI_TIMEOUT,
                     max_retries=LINKDAPI_MAX_RETRIES,
                     retry_delay=LINKDAPI_RETRY_DELAY,
                 )
-                logger.info("LinkdAPI клиент успешно инициализирован без прокси")
-            finally:
-                # Restore proxy variables for other APIs
-                if saved_http_proxy is not None:
-                    os.environ["HTTP_PROXY"] = saved_http_proxy
-                if saved_https_proxy is not None:
-                    os.environ["HTTPS_PROXY"] = saved_https_proxy
-                if saved_http_proxy_lower is not None:
-                    os.environ["http_proxy"] = saved_http_proxy_lower
-                if saved_https_proxy_lower is not None:
-                    os.environ["https_proxy"] = saved_https_proxy_lower
-                logger.debug("Переменные прокси восстановлены для других API")
+                logger.info("LinkdAPI клиент инициализирован без httpx")
 
         except Exception as exc:  # pragma: no cover - внешняя зависимость
             logger.warning("Не удалось инициализировать LinkdAPI-клиент: %s", exc)
