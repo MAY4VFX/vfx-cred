@@ -2,6 +2,8 @@ import os
 import re
 from typing import List, Dict, Optional
 from io import BytesIO
+import asyncio
+import logging
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, HTMLResponse
@@ -13,6 +15,8 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from services.linkedin_lookup import enrich_crew_with_linkedin
+
+logger = logging.getLogger(__name__)
 
 # Suppress SSL warnings when using proxies
 import urllib3
@@ -473,12 +477,13 @@ async def search_movie(movie: MovieRequest):
         movie_title = movie_details.get("title") or movie_details.get("name") or movie.title or "Unknown"
         vfx_crew = filter_vfx_crew(credits, movie_title, movie.imdb_id or "N/A")
 
-        # LinkedIn enrichment is optional - don't block API if it fails
+        # LinkedIn enrichment is optional - don't block API if it fails or times out
         try:
-            await enrich_crew_with_linkedin(vfx_crew)
+            await asyncio.wait_for(enrich_crew_with_linkedin(vfx_crew), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"LinkedIn enrichment timed out after 30s")
         except Exception as e:
-            import logging
-            logging.warning(f"LinkedIn enrichment failed: {e}")
+            logger.warning(f"LinkedIn enrichment failed: {e}")
 
         vfx_crew_payload = [member.dict() for member in vfx_crew]
 
