@@ -17,6 +17,20 @@ from dotenv import load_dotenv
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Setup custom SSL context for HTTPS through SOCKS5 proxy
+import ssl
+from requests.adapters import HTTPAdapter
+from urllib3.util.ssl_ import create_urllib3_context
+
+class SSLAdapter(HTTPAdapter):
+    """Custom adapter to handle SSL verification issues through SOCKS5 proxy"""
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = create_urllib3_context(ssl_version=ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        kwargs['ssl_context'] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
 load_dotenv()
 
 app = FastAPI(title="VFX Credits Filter Service")
@@ -45,6 +59,14 @@ if os.getenv("http_proxy") and not PROXIES.get("http"):
     PROXIES["http"] = os.getenv("http_proxy")
 if os.getenv("https_proxy") and not PROXIES.get("https"):
     PROXIES["https"] = os.getenv("https_proxy")
+
+# Create session with SSL adapter for SOCKS5 proxy support
+def get_session_with_ssl_adapter():
+    """Create a requests session with custom SSL adapter for SOCKS5 proxy"""
+    session = requests.Session()
+    session.mount('https://', SSLAdapter())
+    session.mount('http://', SSLAdapter())
+    return session
 
 # VFX-related job titles to filter
 VFX_JOBS = [
@@ -102,12 +124,13 @@ def is_vfx_job(job: str, department: str) -> bool:
 def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
     """Convert IMDB ID to TMDb ID"""
     try:
+        session = get_session_with_ssl_adapter()
         url = f"{TMDB_BASE_URL}/find/{imdb_id}"
         params = {
             "api_key": TMDB_API_KEY,
             "external_source": "imdb_id"
         }
-        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10, verify=False)
+        response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -124,9 +147,10 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
 def get_movie_credits(tmdb_id: str) -> Optional[Dict]:
     """Get movie credits from TMDb"""
     try:
+        session = get_session_with_ssl_adapter()
         url = f"{TMDB_BASE_URL}/movie/{tmdb_id}/credits"
         params = {"api_key": TMDB_API_KEY}
-        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10, verify=False)
+        response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -137,9 +161,10 @@ def get_movie_credits(tmdb_id: str) -> Optional[Dict]:
 def get_movie_details(tmdb_id: str) -> Optional[Dict]:
     """Get movie details from TMDb"""
     try:
+        session = get_session_with_ssl_adapter()
         url = f"{TMDB_BASE_URL}/movie/{tmdb_id}"
         params = {"api_key": TMDB_API_KEY}
-        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10, verify=False)
+        response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -288,12 +313,13 @@ async def search_movie(movie: MovieRequest):
 
         if not tmdb_id and movie.title:
             # Search by title
+            session = get_session_with_ssl_adapter()
             url = f"{TMDB_BASE_URL}/search/movie"
             params = {
                 "api_key": TMDB_API_KEY,
                 "query": movie.title
             }
-            response = requests.get(url, params=params)
+            response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
             response.raise_for_status()
             results = response.json().get("results", [])
 
