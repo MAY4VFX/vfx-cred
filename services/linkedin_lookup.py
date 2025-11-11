@@ -257,7 +257,8 @@ async def _lookup_profile(client: AsyncLinkdAPI, name: str, job: str) -> Optiona
         if isinstance(data, list):
             candidates = data
         elif isinstance(data, dict):
-            candidates = _safe_get_list(data, ("profiles", "items", "elements", "results"))
+            # LinkdAPI can return results in different formats: people, profiles, items, elements, results
+            candidates = _safe_get_list(data, ("people", "profiles", "items", "elements", "results"))
     elif isinstance(search_response, list):
         candidates = search_response
 
