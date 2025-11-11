@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY app.py .
+COPY services/ ./services/
 COPY static/ ./static/
 
 # Create non-root user

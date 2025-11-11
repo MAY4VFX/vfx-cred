@@ -332,6 +332,11 @@
             margin-right: 8px;
         }
 
+        .badge-muted {
+            background: #e0e0e0;
+            color: #555;
+        }
+
         .filter-buttons-section {
             margin-bottom: 20px;
         }
@@ -509,6 +514,7 @@
                                 <th>Отдел</th>
                                 <th>Фильм</th>
                                 <th>IMDB ID</th>
+                                <th>LinkedIn</th>
                             </tr>
                         </thead>
                         <tbody id="resultsTable">
@@ -761,7 +767,10 @@
                     crew.name.toLowerCase().includes(textQuery) ||
                     crew.job.toLowerCase().includes(textQuery) ||
                     crew.department.toLowerCase().includes(textQuery) ||
-                    crew.movie_title.toLowerCase().includes(textQuery);
+                    crew.movie_title.toLowerCase().includes(textQuery) ||
+                    (crew.linkedin_profile_name && crew.linkedin_profile_name.toLowerCase().includes(textQuery)) ||
+                    (crew.linkedin_headline && crew.linkedin_headline.toLowerCase().includes(textQuery)) ||
+                    (crew.linkedin_url && crew.linkedin_url.toLowerCase().includes(textQuery));
 
                 // Department filter
                 const deptMatch = selectedDepartments.size === 0 ||
@@ -860,6 +869,16 @@
             }, 5000);
         }
 
+        function escapeHtml(value) {
+            if (!value) return '';
+            return value
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function displayResults(data) {
             document.getElementById('totalMovies').textContent = data.processed_movies.length;
             document.getElementById('totalCrew').textContent = data.total_vfx_crew;
@@ -883,18 +902,30 @@
             tbody.innerHTML = '';
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 40px; color: #999;">Данные не найдены</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">Данные не найдены</td></tr>';
                 return;
             }
 
             filteredData.forEach(crew => {
                 const row = document.createElement('tr');
+                const confidence = typeof crew.linkedin_confidence === 'number'
+                    ? ` (${Math.round(crew.linkedin_confidence * 100)}%)`
+                    : '';
+                const linkLabel = crew.linkedin_profile_name ? escapeHtml(crew.linkedin_profile_name) : 'Профиль';
+                const linkTitle = crew.linkedin_headline ? escapeHtml(crew.linkedin_headline) : 'Открыть профиль LinkedIn';
+                const linkedinUrl = crew.linkedin_url ? escapeHtml(crew.linkedin_url) : '';
+                const imdbValue = crew.imdb_id ? escapeHtml(crew.imdb_id) : 'N/A';
+                const linkedinCell = crew.linkedin_url
+                    ? `<a href="${linkedinUrl}" target="_blank" rel="noopener noreferrer" title="${linkTitle}">${linkLabel}</a>${confidence}`
+                    : '<span class="badge badge-muted">Не найдено</span>';
+
                 row.innerHTML = `
-                    <td><strong>${crew.name}</strong></td>
-                    <td><span class="badge">${crew.job}</span></td>
-                    <td>${crew.department}</td>
-                    <td>${crew.movie_title}</td>
-                    <td>${crew.imdb_id}</td>
+                    <td><strong>${escapeHtml(crew.name)}</strong></td>
+                    <td><span class="badge">${escapeHtml(crew.job)}</span></td>
+                    <td>${escapeHtml(crew.department)}</td>
+                    <td>${escapeHtml(crew.movie_title)}</td>
+                    <td>${imdbValue}</td>
+                    <td>${linkedinCell}</td>
                 `;
                 tbody.appendChild(row);
             });

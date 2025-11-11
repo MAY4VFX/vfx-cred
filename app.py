@@ -1,6 +1,5 @@
 import os
 import re
-import asyncio
 from typing import List, Dict, Optional
 from io import BytesIO
 
@@ -12,6 +11,8 @@ from pydantic import BaseModel
 import requests
 import pandas as pd
 from dotenv import load_dotenv
+
+from services.linkedin_lookup import enrich_crew_with_linkedin
 
 # Suppress SSL warnings when using proxies
 import urllib3
@@ -155,6 +156,11 @@ class CrewMember(BaseModel):
     department: str
     movie_title: str
     imdb_id: str
+    tmdb_person_id: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    linkedin_profile_name: Optional[str] = None
+    linkedin_headline: Optional[str] = None
+    linkedin_confidence: Optional[float] = None
 
 
 def extract_imdb_id(url_or_id: str) -> Optional[str]:
@@ -275,6 +281,9 @@ def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str, apply_filter:
         job = member.get("job", "")
         department = member.get("department", "")
         name = member.get("name", "")
+        tmdb_person_id = member.get("id")
+        if tmdb_person_id is not None:
+            tmdb_person_id = str(tmdb_person_id)
 
         # If filtering is disabled (default), include everyone
         if not apply_filter or is_vfx_job(job, department):
@@ -283,7 +292,8 @@ def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str, apply_filter:
                 job=job,
                 department=department,
                 movie_title=movie_title,
-                imdb_id=imdb_id
+                imdb_id=imdb_id,
+                tmdb_person_id=tmdb_person_id
             ))
 
     return crew
@@ -341,7 +351,7 @@ async def upload_csv(file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
 
         # Process movies
-        all_vfx_crew = []
+        all_vfx_crew_models: List[CrewMember] = []
         processed_movies = []
 
         for _, row in df.iterrows():
@@ -394,7 +404,7 @@ async def upload_csv(file: UploadFile = File(...)):
             movie_title = movie_details.get("title") or movie_details.get("name") or title or "Unknown"
             vfx_crew = filter_vfx_crew(credits, movie_title, imdb_id or "N/A")
 
-            all_vfx_crew.extend([member.dict() for member in vfx_crew])
+            all_vfx_crew_models.extend(vfx_crew)
 
             processed_movies.append({
                 "title": movie_title,
@@ -403,11 +413,15 @@ async def upload_csv(file: UploadFile = File(...)):
                 "vfx_crew_count": len(vfx_crew)
             })
 
+        await enrich_crew_with_linkedin(all_vfx_crew_models)
+
+        all_vfx_crew = [member.dict() for member in all_vfx_crew_models]
+
         return {
             "success": True,
             "processed_movies": processed_movies,
             "vfx_crew": all_vfx_crew,
-            "total_vfx_crew": len(all_vfx_crew)
+            "total_vfx_crew": len(all_vfx_crew_models)
         }
 
     except Exception as e:
@@ -459,6 +473,10 @@ async def search_movie(movie: MovieRequest):
         movie_title = movie_details.get("title") or movie_details.get("name") or movie.title or "Unknown"
         vfx_crew = filter_vfx_crew(credits, movie_title, movie.imdb_id or "N/A")
 
+        await enrich_crew_with_linkedin(vfx_crew)
+
+        vfx_crew_payload = [member.dict() for member in vfx_crew]
+
         return {
             "success": True,
             "movie": {
@@ -468,8 +486,8 @@ async def search_movie(movie: MovieRequest):
                 "overview": movie_details.get("overview", ""),
                 "release_date": movie_details.get("release_date") or movie_details.get("first_air_date", "")
             },
-            "vfx_crew": [member.dict() for member in vfx_crew],
-            "total_vfx_crew": len(vfx_crew)
+            "vfx_crew": vfx_crew_payload,
+            "total_vfx_crew": len(vfx_crew_payload)
         }
 
     except HTTPException:
