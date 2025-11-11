@@ -158,11 +158,12 @@ def _create_client() -> Optional[Linkedin]:
     proxies = _build_proxies()
 
     try:
+        # Always pass proxies dict (never None) to avoid TypeError in linkedin-api
         return Linkedin(
             username,
             password,
             cookies=cookies,
-            proxies=proxies,
+            proxies=proxies if proxies else {},
         )
     except Exception as exc:  # pragma: no cover - внешняя зависимость
         logger.warning("Ошибка инициализации клиента LinkedIn: %s", exc)
