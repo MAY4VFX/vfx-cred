@@ -165,14 +165,18 @@ def _create_client() -> Optional[Linkedin]:
         # If cookies are not provided, use username/password to authenticate
         if cookies:
             # Use cookies only - disable authentication since we have valid cookies
-            return Linkedin(
+            logger.info(f"Initializing LinkedIn client with cookies-only mode")
+            client = Linkedin(
                 "", "",  # Empty username/password when using cookies
                 authenticate=False,  # Skip authentication if cookies are provided
                 cookies=cookies,
                 proxies=proxies if proxies else {},
             )
+            logger.info("LinkedIn client successfully initialized with cookies")
+            return client
         else:
             # Use username/password authentication
+            logger.info(f"Initializing LinkedIn client with username/password authentication")
             return Linkedin(
                 username,
                 password,
@@ -230,6 +234,7 @@ def _lookup_profile_sync(client: Linkedin, name: str, job: str) -> Optional[Dict
         candidates = _call_linkedin(client.search_people, **search_kwargs)
     except Exception as exc:  # pragma: no cover - внешняя зависимость
         logger.warning("Поиск LinkedIn для %s завершился с ошибкой: %s", name, exc)
+        logger.debug(f"LinkedIn search error details: {type(exc).__name__}: {exc}", exc_info=True)
         return None
 
     if not candidates:
