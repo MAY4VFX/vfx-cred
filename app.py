@@ -132,8 +132,8 @@ def is_vfx_job(job: str, department: str) -> bool:
     return any(vfx_keyword in text for vfx_keyword in VFX_JOBS)
 
 
-def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
-    """Convert IMDB ID to TMDb ID"""
+def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[Dict]:
+    """Convert IMDB ID to TMDb ID, returns dict with id and type (movie/tv)"""
     try:
         session = get_session_with_ssl_adapter()
         url = f"{TMDB_BASE_URL}/find/{imdb_id}"
@@ -152,15 +152,15 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
         if data.get("movie_results"):
             tmdb_id = str(data["movie_results"][0]["id"])
             print(f"DEBUG: Found TMDB movie ID {tmdb_id} for IMDB {imdb_id}")
-            return tmdb_id
+            return {"id": tmdb_id, "type": "movie"}
 
-        # Also check TV results (for completeness, though we mainly process movies)
+        # Also check TV results
         if data.get("tv_results"):
             tmdb_id = str(data["tv_results"][0]["id"])
             print(f"DEBUG: Found TMDB TV ID {tmdb_id} for IMDB {imdb_id} (TV series)")
-            return tmdb_id
+            return {"id": tmdb_id, "type": "tv"}
 
-        print(f"DEBUG: No movie/TV results found for {imdb_id}, response: {data}")
+        print(f"DEBUG: No movie/TV results found for {imdb_id}")
         return None
     except Exception as e:
         print(f"Error converting IMDB ID {imdb_id}: {e}")
@@ -169,31 +169,31 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
         return None
 
 
-def get_movie_credits(tmdb_id: str) -> Optional[Dict]:
-    """Get movie credits from TMDb"""
+def get_movie_credits(tmdb_id: str, media_type: str = "movie") -> Optional[Dict]:
+    """Get credits from TMDb (supports both movies and TV shows)"""
     try:
         session = get_session_with_ssl_adapter()
-        url = f"{TMDB_BASE_URL}/movie/{tmdb_id}/credits"
+        url = f"{TMDB_BASE_URL}/{media_type}/{tmdb_id}/credits"
         params = {"api_key": TMDB_API_KEY}
         response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        print(f"Error getting credits for TMDb ID {tmdb_id}: {e}")
+        print(f"Error getting {media_type} credits for TMDb ID {tmdb_id}: {e}")
         return None
 
 
-def get_movie_details(tmdb_id: str) -> Optional[Dict]:
-    """Get movie details from TMDb"""
+def get_movie_details(tmdb_id: str, media_type: str = "movie") -> Optional[Dict]:
+    """Get details from TMDb (supports both movies and TV shows)"""
     try:
         session = get_session_with_ssl_adapter()
-        url = f"{TMDB_BASE_URL}/movie/{tmdb_id}"
+        url = f"{TMDB_BASE_URL}/{media_type}/{tmdb_id}"
         params = {"api_key": TMDB_API_KEY}
         response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        print(f"Error getting movie details for TMDb ID {tmdb_id}: {e}")
+        print(f"Error getting {media_type} details for TMDb ID {tmdb_id}: {e}")
         return None
 
 
@@ -276,11 +276,11 @@ async def upload_csv(file: UploadFile = File(...)):
                 continue
 
             # Get TMDb ID
-            tmdb_id = None
+            tmdb_info = None
             if imdb_id:
-                tmdb_id = get_tmdb_id_from_imdb(imdb_id)
+                tmdb_info = get_tmdb_id_from_imdb(imdb_id)
 
-            if not tmdb_id:
+            if not tmdb_info:
                 processed_movies.append({
                     "title": title or "Unknown",
                     "imdb_id": imdb_id or "N/A",
@@ -289,9 +289,11 @@ async def upload_csv(file: UploadFile = File(...)):
                 })
                 continue
 
-            # Get movie details and credits
-            movie_details = get_movie_details(tmdb_id)
-            credits = get_movie_credits(tmdb_id)
+            # Get movie/TV details and credits
+            media_type = tmdb_info.get("type", "movie")
+            tmdb_id = tmdb_info.get("id")
+            movie_details = get_movie_details(tmdb_id, media_type)
+            credits = get_movie_credits(tmdb_id, media_type)
 
             if not credits:
                 processed_movies.append({
@@ -329,14 +331,15 @@ async def upload_csv(file: UploadFile = File(...)):
 async def search_movie(movie: MovieRequest):
     """Search for a single movie by IMDB ID or title"""
     try:
-        tmdb_id = None
+        tmdb_info = None
+        media_type = "movie"
 
         if movie.imdb_id:
             imdb_id = extract_imdb_id(movie.imdb_id)
             if imdb_id:
-                tmdb_id = get_tmdb_id_from_imdb(imdb_id)
+                tmdb_info = get_tmdb_id_from_imdb(imdb_id)
 
-        if not tmdb_id and movie.title:
+        if not tmdb_info and movie.title:
             # Search by title
             session = get_session_with_ssl_adapter()
             url = f"{TMDB_BASE_URL}/search/movie"
@@ -349,14 +352,18 @@ async def search_movie(movie: MovieRequest):
             results = response.json().get("results", [])
 
             if results:
-                tmdb_id = str(results[0]["id"])
+                tmdb_info = {"id": str(results[0]["id"]), "type": "movie"}
 
-        if not tmdb_id:
+        if not tmdb_info:
             raise HTTPException(status_code=404, detail="Movie not found")
 
-        # Get movie details and credits
-        movie_details = get_movie_details(tmdb_id)
-        credits = get_movie_credits(tmdb_id)
+        # Extract ID and type
+        tmdb_id = tmdb_info.get("id")
+        media_type = tmdb_info.get("type", "movie")
+
+        # Get movie/TV details and credits
+        movie_details = get_movie_details(tmdb_id, media_type)
+        credits = get_movie_credits(tmdb_id, media_type)
 
         if not credits:
             raise HTTPException(status_code=404, detail="Credits not found")
