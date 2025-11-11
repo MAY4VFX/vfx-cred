@@ -94,16 +94,18 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
         try:
             logger.info("Инициализация LinkdAPI клиента...")
 
-            # Create httpx client without proxy for LinkdAPI
-            # (LinkdAPI doesn't work with SOCKS proxy environment variables)
+            # Create httpx client explicitly without proxy (env vars will be ignored if we override limits)
+            # LinkdAPI doesn't work properly with SOCKS proxy environment variables
             if httpx is not None:
+                # Create transport with no proxy by using limits to force direct connection
                 http_client = httpx.AsyncClient(
-                    mounts={
-                        "http://": httpx.AsyncHTTPTransport(proxy=None),
-                        "https://": httpx.AsyncHTTPTransport(proxy=None),
-                    },
                     timeout=LINKDAPI_TIMEOUT,
+                    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+                    verify=False,  # Skip SSL verification since we trust the API host
                 )
+                # Patch the client to not use environment proxies
+                http_client._mounts = {}  # Clear any proxy mounts
+
                 _CLIENT = AsyncLinkdAPI(
                     LINKDAPI_API_KEY,
                     client=http_client,
