@@ -164,9 +164,10 @@ def _create_client() -> Optional[Linkedin]:
         # If cookies are provided, use only cookies (no password needed)
         # If cookies are not provided, use username/password to authenticate
         if cookies:
-            # Use cookies only - don't pass username/password
+            # Use cookies only - disable authentication since we have valid cookies
             return Linkedin(
                 "", "",  # Empty username/password when using cookies
+                authenticate=False,  # Skip authentication if cookies are provided
                 cookies=cookies,
                 proxies=proxies if proxies else {},
             )
