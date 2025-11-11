@@ -417,16 +417,9 @@ async def upload_csv(file: UploadFile = File(...)):
                 "vfx_crew_count": len(vfx_crew)
             })
 
-        # LinkedIn enrichment with timeout - don't block endpoint response
-        try:
-            await asyncio.wait_for(
-                enrich_crew_with_linkedin(all_vfx_crew_models),
-                timeout=30.0  # 30 second timeout for LinkedIn enrichment
-            )
-        except asyncio.TimeoutError:
-            logger.warning("LinkedIn enrichment timed out, returning results without LinkedIn data")
-        except Exception as e:
-            logger.warning(f"LinkedIn enrichment failed: {e}")
+        # LinkedIn enrichment is now done on-demand via /api/linkedin-lookup endpoint
+        # to avoid blocking the response and burning API tokens during file upload
+        # Users can click the "LinkedIn для всех" button to load LinkedIn profiles
 
         all_vfx_crew = [member.dict() for member in all_vfx_crew_models]
 
