@@ -7,4 +7,4 @@ openpyxl==3.1.2
 pydantic==2.5.0
 aiohttp==3.9.1
 python-multipart==0.0.6
-linkedin-api==2.0.0a5
+linkdapi==1.0.2

@@ -1,39 +1,34 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import re
-import threading
 import time
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-try:
-    from linkedin_api import Linkedin
-except ImportError:  # pragma: no cover - optional dependency
-    Linkedin = None  # type: ignore[assignment]
+try:  # pragma: no cover - внешняя зависимость
+    from linkdapi import AsyncLinkdAPI
+except ImportError:  # pragma: no cover - опциональная зависимость
+    AsyncLinkdAPI = None  # type: ignore[assignment]
 
 
 logger = logging.getLogger(__name__)
 
-LINKEDIN_USERNAME = os.getenv("LINKEDIN_USERNAME")
-LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD")
-LINKEDIN_COOKIES_PATH = os.getenv("LINKEDIN_COOKIES_PATH")
-LINKEDIN_COOKIES_JSON = os.getenv("LINKEDIN_COOKIES_JSON")
-LINKEDIN_PROXY = os.getenv("LINKEDIN_PROXY")
-LINKEDIN_HTTP_PROXY = os.getenv("LINKEDIN_HTTP_PROXY")
-LINKEDIN_HTTPS_PROXY = os.getenv("LINKEDIN_HTTPS_PROXY")
-LINKEDIN_MAX_RESULTS = int(os.getenv("LINKEDIN_MAX_RESULTS", "3"))
-LINKEDIN_REQUEST_INTERVAL = float(os.getenv("LINKEDIN_REQUEST_INTERVAL", "1.5"))
-LINKEDIN_CONCURRENCY = max(1, int(os.getenv("LINKEDIN_CONCURRENCY", "1")))
+LINKDAPI_API_KEY = os.getenv("LINKDAPI_API_KEY")
+LINKDAPI_MAX_RESULTS = int(os.getenv("LINKDAPI_MAX_RESULTS", "3"))
+LINKDAPI_CONCURRENCY = max(1, int(os.getenv("LINKDAPI_CONCURRENCY", "1")))
+LINKDAPI_REQUEST_INTERVAL = max(0.0, float(os.getenv("LINKDAPI_REQUEST_INTERVAL", "0.5")))
+LINKDAPI_MAX_RETRIES = max(1, int(os.getenv("LINKDAPI_MAX_RETRIES", "3")))
+LINKDAPI_RETRY_DELAY = max(0.1, float(os.getenv("LINKDAPI_RETRY_DELAY", "1.0")))
+LINKDAPI_TIMEOUT = max(1.0, float(os.getenv("LINKDAPI_TIMEOUT", "30.0")))
 
-_SEMAPHORE = asyncio.Semaphore(LINKEDIN_CONCURRENCY)
 _CACHE: Dict[str, Optional[Dict[str, Any]]] = {}
-_CLIENT: Optional[Linkedin] = None
+_SEMAPHORE = asyncio.Semaphore(LINKDAPI_CONCURRENCY)
+_CLIENT: Optional[AsyncLinkdAPI] = None
 _CLIENT_INITIALIZED = False
 _CLIENT_LOCK = asyncio.Lock()
-_THREAD_LOCK = threading.Lock()
+_THROTTLE_LOCK = asyncio.Lock()
 _LAST_REQUEST_TS = 0.0
 
 
@@ -55,228 +50,219 @@ def _split_name(full_name: str) -> Dict[str, Optional[str]]:
 
 def _tokenize_job(job: str) -> List[str]:
     normalized = (job or "").lower()
-    return [
-        token
-        for token in re.split(r"[^a-z0-9]+", normalized)
-        if len(token) > 2
-    ]
+    return [token for token in re.split(r"[^a-z0-9]+", normalized) if len(token) > 2]
 
 
-def _load_cookies() -> Optional[Dict[str, Any]]:
-    if LINKEDIN_COOKIES_JSON:
-        try:
-            return json.loads(LINKEDIN_COOKIES_JSON)
-        except json.JSONDecodeError:
-            logger.warning("Не удалось распарсить LINKEDIN_COOKIES_JSON")
-    if LINKEDIN_COOKIES_PATH:
-        try:
-            with open(LINKEDIN_COOKIES_PATH, "r", encoding="utf-8") as fh:
-                return json.load(fh)
-        except FileNotFoundError:
-            logger.warning("Файл с cookie LinkedIn не найден: %s", LINKEDIN_COOKIES_PATH)
-        except json.JSONDecodeError:
-            logger.warning("Не удалось распарсить cookie из файла %s", LINKEDIN_COOKIES_PATH)
-    return None
+def _safe_get_list(container: Any, keys: Sequence[str]) -> List[Any]:
+    if not isinstance(container, dict):
+        return []
+    for key in keys:
+        value = container.get(key)
+        if isinstance(value, list):
+            return value
+        if isinstance(value, dict):
+            # иногда LinkdAPI возвращает вложенные структуры вида {"items": [...], ...}
+            nested = _safe_get_list(value, keys)
+            if nested:
+                return nested
+    return []
 
 
-def _build_proxies() -> Dict[str, str]:
-    proxies: Dict[str, str] = {}
-    if LINKEDIN_PROXY:
-        proxies["http"] = LINKEDIN_PROXY
-        proxies["https"] = LINKEDIN_PROXY
-    if LINKEDIN_HTTP_PROXY:
-        proxies["http"] = LINKEDIN_HTTP_PROXY
-    if LINKEDIN_HTTPS_PROXY:
-        proxies["https"] = LINKEDIN_HTTPS_PROXY
-    return proxies
-
-
-def _extract_localized(value: Any) -> Optional[str]:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        localized = value.get("localized")
-        if isinstance(localized, dict) and localized:
-            for preferred_key in ("ru_RU", "en_US"):
-                if preferred_key in localized:
-                    return localized[preferred_key]
-            return next(iter(localized.values()))
-        if "text" in value and isinstance(value["text"], str):
-            return value["text"]
-    return None
-
-
-def _collect_profile_text(profile: Dict[str, Any]) -> str:
-    chunks: List[str] = []
-    for key in ("headline", "summary", "industryName"):
-        value = _extract_localized(profile.get(key))
-        if value:
-            chunks.append(value)
-    experience = profile.get("experience") or []
-    for position in experience:
-        if isinstance(position, dict):
-            for key in ("title", "description", "companyName", "companyTitle"):
-                value = position.get(key)
-                if isinstance(value, dict):
-                    value = _extract_localized(value)
-                if isinstance(value, str) and value:
-                    chunks.append(value)
-    return " ".join(chunks).lower()
-
-
-def _score_profile(profile: Dict[str, Any], job_tokens: List[str]) -> float:
-    if not job_tokens:
-        return 0.0
-    text = _collect_profile_text(profile)
-    if not text:
-        return 0.0
-    matches = sum(1 for token in job_tokens if token in text)
-    if matches == 0:
-        return 0.0
-    return matches / len(job_tokens)
-
-
-def _profile_name(profile: Dict[str, Any]) -> Optional[str]:
-    first = _extract_localized(profile.get("firstName"))
-    last = _extract_localized(profile.get("lastName"))
-    name_parts = [part for part in (first, last) if part]
-    return " ".join(name_parts) if name_parts else None
-
-
-def _create_client() -> Optional[Linkedin]:
-    if Linkedin is None:
-        logger.warning("Библиотека linkedin-api не установлена, обогащение отключено")
-        return None
-
-    cookies = _load_cookies()
-    username = LINKEDIN_USERNAME or ""
-    password = LINKEDIN_PASSWORD or ""
-    proxies = _build_proxies()
-
-    # If we have cookies, use them. Otherwise require username/password
-    if not cookies and (not username or not password):
-        logger.warning("Не заданы учетные данные LinkedIn — пропускаем обогащение")
-        return None
-
-    try:
-        logger.debug(f"Initializing LinkedIn client with username={username if not cookies else 'cookies'}, proxies={bool(proxies)}")
-
-        # If cookies are provided, use only cookies (no password needed)
-        # If cookies are not provided, use username/password to authenticate
-        if cookies:
-            # Use cookies only - disable authentication since we have valid cookies
-            logger.info(f"Initializing LinkedIn client with cookies-only mode")
-            client = Linkedin(
-                "", "",  # Empty username/password when using cookies
-                authenticate=False,  # Skip authentication if cookies are provided
-                cookies=cookies,
-                proxies=proxies if proxies else {},
-            )
-            logger.info("LinkedIn client successfully initialized with cookies")
-            return client
-        else:
-            # Use username/password authentication
-            logger.info(f"Initializing LinkedIn client with username/password authentication")
-            return Linkedin(
-                username,
-                password,
-                proxies=proxies if proxies else {},
-            )
-    except Exception as exc:  # pragma: no cover - внешняя зависимость
-        logger.warning(f"Ошибка инициализации клиента LinkedIn: {type(exc).__name__}: {exc}")
-        import traceback
-        logger.debug(f"LinkedIn init traceback: {traceback.format_exc()}")
-        return None
-
-
-async def _get_client() -> Optional[Linkedin]:
+async def _get_client() -> Optional[AsyncLinkdAPI]:
     global _CLIENT, _CLIENT_INITIALIZED
+    if AsyncLinkdAPI is None:
+        if not _CLIENT_INITIALIZED:
+            logger.warning("Библиотека linkdapi не установлена, LinkedIn-обогащение отключено")
+            _CLIENT_INITIALIZED = True
+        return None
+
+    if not LINKDAPI_API_KEY:
+        if not _CLIENT_INITIALIZED:
+            logger.warning("Переменная окружения LINKDAPI_API_KEY не задана — пропускаем LinkedIn-обогащение")
+            _CLIENT_INITIALIZED = True
+        return None
+
     async with _CLIENT_LOCK:
         if _CLIENT is not None:
             return _CLIENT
         if _CLIENT_INITIALIZED and _CLIENT is None:
             return None
-        _CLIENT = await asyncio.to_thread(_create_client)
+        try:
+            _CLIENT = AsyncLinkdAPI(
+                LINKDAPI_API_KEY,
+                timeout=LINKDAPI_TIMEOUT,
+                max_retries=LINKDAPI_MAX_RETRIES,
+                retry_delay=LINKDAPI_RETRY_DELAY,
+            )
+        except Exception as exc:  # pragma: no cover - внешняя зависимость
+            logger.warning("Не удалось инициализировать LinkdAPI-клиент: %s", exc)
+            _CLIENT = None
         _CLIENT_INITIALIZED = True
         return _CLIENT
 
 
-def _call_linkedin(func, *args, **kwargs):
+async def _throttled_call(method, *args, **kwargs):
     global _LAST_REQUEST_TS
-    with _THREAD_LOCK:
+    if LINKDAPI_REQUEST_INTERVAL <= 0:
+        return await method(*args, **kwargs)
+
+    async with _THROTTLE_LOCK:
         now = time.monotonic()
-        wait_for = LINKEDIN_REQUEST_INTERVAL - (now - _LAST_REQUEST_TS)
+        wait_for = LINKDAPI_REQUEST_INTERVAL - (now - _LAST_REQUEST_TS)
         if wait_for > 0:
-            time.sleep(wait_for)
-        result = func(*args, **kwargs)
+            await asyncio.sleep(wait_for)
+        result = await method(*args, **kwargs)
         _LAST_REQUEST_TS = time.monotonic()
-        # Debug: log raw response
-        logger.debug(f"LinkedIn API response type: {type(result)}, value: {result}")
         return result
 
 
-def _lookup_profile_sync(client: Linkedin, name: str, job: str) -> Optional[Dict[str, Any]]:
-    name_parts = _split_name(name)
-    if not name_parts["first"] and not name_parts["last"]:
-        return None
+def _candidate_text(candidate: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    for key in ("headline", "occupation", "summary", "title", "description"):
+        value = candidate.get(key)
+        if isinstance(value, str) and value:
+            parts.append(value)
+    location = candidate.get("location") or candidate.get("locationName")
+    if isinstance(location, str):
+        parts.append(location)
+    return " ".join(parts).lower()
 
+
+def _profile_text(profile: Dict[str, Any]) -> str:
+    parts: List[str] = []
+    for key in ("headline", "summary", "about", "industryName", "industry", "fullName"):
+        value = profile.get(key)
+        if isinstance(value, str) and value:
+            parts.append(value)
+    experience = profile.get("experience") or profile.get("positions")
+    if isinstance(experience, dict):
+        experience = experience.get("positions") or experience.get("items")
+    if isinstance(experience, list):
+        for item in experience:
+            if isinstance(item, dict):
+                for key in ("title", "companyName", "description"):
+                    value = item.get(key)
+                    if isinstance(value, str) and value:
+                        parts.append(value)
+    return " ".join(parts).lower()
+
+
+def _score_text(text: str, tokens: Sequence[str]) -> float:
+    if not text or not tokens:
+        return 0.0
+    matches = sum(1 for token in tokens if token in text)
+    if matches == 0:
+        return 0.0
+    return matches / len(tokens)
+
+
+def _extract_public_identifier(candidate: Dict[str, Any]) -> Optional[str]:
+    for key in ("publicIdentifier", "public_identifier", "username", "profileId", "id"):
+        value = candidate.get(key)
+        if isinstance(value, str) and value:
+            return value.strip()
+    profile_url = candidate.get("profileUrl") or candidate.get("url")
+    if isinstance(profile_url, str) and "linkedin.com/in/" in profile_url:
+        slug = profile_url.split("linkedin.com/in/")[-1]
+        slug = slug.split("?")[0].strip("/")
+        if slug:
+            return slug
+    return None
+
+
+def _candidate_name(candidate: Dict[str, Any]) -> Optional[str]:
+    full_name = candidate.get("fullName") or candidate.get("name")
+    if isinstance(full_name, str) and full_name:
+        return full_name
+    first = candidate.get("firstName")
+    last = candidate.get("lastName")
+    parts = [part for part in (first, last) if isinstance(part, str) and part]
+    return " ".join(parts) if parts else None
+
+
+async def _lookup_profile(client: AsyncLinkdAPI, name: str, job: str) -> Optional[Dict[str, Any]]:
+    name_parts = _split_name(name)
     search_kwargs: Dict[str, Any] = {
-        "keywords": f"{name} {job}".strip(),
-        "include_private_profiles": False,
-        "limit": LINKEDIN_MAX_RESULTS,
+        "keyword": f"{name} {job}".strip(),
+        "first_name": name_parts["first"],
+        "last_name": name_parts["last"],
+        "title": job or None,
     }
-    if name_parts["first"]:
-        search_kwargs["keyword_first_name"] = name_parts["first"]
-    if name_parts["last"]:
-        search_kwargs["keyword_last_name"] = name_parts["last"]
-    if job:
-        search_kwargs["keyword_title"] = job
+
+    # удалить пустые значения
+    search_kwargs = {k: v for k, v in search_kwargs.items() if v}
 
     try:
-        candidates = _call_linkedin(client.search_people, **search_kwargs)
+        search_response = await _throttled_call(client.search_people, **search_kwargs)
     except Exception as exc:  # pragma: no cover - внешняя зависимость
-        logger.warning("Поиск LinkedIn для %s завершился с ошибкой: %s", name, exc)
-        logger.debug(f"LinkedIn search error details: {type(exc).__name__}: {exc}", exc_info=True)
+        logger.warning("LinkdAPI: ошибка поиска для %s — %s", name, exc)
         return None
+
+    candidates: List[Dict[str, Any]] = []
+    if isinstance(search_response, dict):
+        data = search_response.get("data")
+        if isinstance(data, list):
+            candidates = data
+        elif isinstance(data, dict):
+            candidates = _safe_get_list(data, ("profiles", "items", "elements", "results"))
+    elif isinstance(search_response, list):
+        candidates = search_response
 
     if not candidates:
         return None
 
     job_tokens = _tokenize_job(job)
     best_candidate: Optional[Dict[str, Any]] = None
-    best_profile: Optional[Dict[str, Any]] = None
     best_score = 0.0
 
-    for candidate in candidates:
-        public_id = candidate.get("public_id")
-        if not public_id:
+    for candidate in candidates[:LINKDAPI_MAX_RESULTS]:
+        if not isinstance(candidate, dict):
             continue
-        try:
-            profile = _call_linkedin(client.get_profile, public_id=public_id)
-        except Exception as exc:  # pragma: no cover - внешняя зависимость
-            logger.debug("Не удалось получить профиль %s: %s", public_id, exc)
-            continue
-        if not isinstance(profile, dict) or not profile:
-            continue
-        score = _score_profile(profile, job_tokens)
+        score = _score_text(_candidate_text(candidate), job_tokens)
         if score > best_score or best_candidate is None:
             best_candidate = candidate
-            best_profile = profile
             best_score = score
 
-    if best_candidate and best_profile:
-        public_id = best_candidate.get("public_id")
-        url = f"https://www.linkedin.com/in/{public_id}" if public_id else None
-        headline = _extract_localized(best_profile.get("headline"))
-        confidence = round(best_score, 2) if best_score > 0 else None
-        return {
-            "url": url,
-            "profile_name": _profile_name(best_profile),
-            "headline": headline,
-            "confidence": confidence,
-        }
+    if best_candidate is None:
+        return None
 
-    return None
+    public_id = _extract_public_identifier(best_candidate)
+    profile_details: Optional[Dict[str, Any]] = None
+
+    if public_id:
+        try:
+            overview_response = await _throttled_call(client.get_profile_overview, public_id)
+        except Exception as exc:  # pragma: no cover - внешняя зависимость
+            logger.debug("LinkdAPI: не удалось получить профиль %s: %s", public_id, exc)
+        else:
+            if isinstance(overview_response, dict):
+                profile_details = overview_response.get("data") if isinstance(overview_response.get("data"), dict) else None
+                if profile_details:
+                    detail_score = _score_text(_profile_text(profile_details), job_tokens)
+                    if detail_score > best_score:
+                        best_score = detail_score
+
+    url = f"https://www.linkedin.com/in/{public_id}" if public_id else None
+    headline = None
+    if profile_details and isinstance(profile_details.get("headline"), str):
+        headline = profile_details.get("headline")
+    elif isinstance(best_candidate.get("headline"), str):
+        headline = best_candidate.get("headline")
+
+    profile_name = None
+    if profile_details and isinstance(profile_details.get("fullName"), str):
+        profile_name = profile_details.get("fullName")
+    else:
+        profile_name = _candidate_name(best_candidate)
+
+    confidence = round(best_score, 2) if best_score > 0 else None
+
+    return {
+        "url": url,
+        "profile_name": profile_name,
+        "headline": headline,
+        "confidence": confidence,
+    }
 
 
 async def find_linkedin_profile(
@@ -294,7 +280,7 @@ async def find_linkedin_profile(
         return None
 
     async with _SEMAPHORE:
-        result = await asyncio.to_thread(_lookup_profile_sync, client, name, job)
+        result = await _lookup_profile(client, name, job)
 
     _CACHE[cache_key] = result
     return result
@@ -324,7 +310,7 @@ async def enrich_crew_with_linkedin(crew_members: Iterable[Any]) -> None:
 
     for member, result in zip(crew_list, results):
         if isinstance(result, Exception):
-            logger.warning("Ошибка LinkedIn для %s: %s", member.name, result)
+            logger.warning("Ошибка LinkdAPI для %s: %s", member.name, result)
             continue
         if not result:
             continue

@@ -18,7 +18,7 @@
 
 - Docker и Docker Compose
 - TMDb API ключ (получить на https://www.themoviedb.org/settings/api)
-- Аккаунт LinkedIn с валидными cookie или логином/паролем для библиотеки [`linkedin-api`](https://github.com/nsandman/linkedin-api)
+- Аккаунт [LinkdAPI](https://linkdapi.com) и действующий API-ключ для поиска по LinkedIn
 
 ### 1. Клонирование репозитория
 
@@ -35,18 +35,21 @@ cd vfx-cred
 cp .env.example .env
 ```
 
-Отредактируйте `.env` и добавьте ваш TMDb API ключ и реквизиты LinkedIn:
+Отредактируйте `.env` и добавьте ваши ключи TMDb и LinkdAPI:
 
 ```env
 TMDB_API_KEY=ваш_ключ_здесь
 TMDB_BASE_URL=https://api.themoviedb.org/3
 HOST=0.0.0.0
 PORT=8010
-LINKEDIN_USERNAME=адрес_вашей_почты_в_LinkedIn
-LINKEDIN_PASSWORD=пароль_от_LinkedIn
-# либо укажите cookie, сохранённые через linkedin-api
-# LINKEDIN_COOKIES_PATH=/app/config/linkedin_cookies.json
-# LINKEDIN_COOKIES_JSON={"li_at":"...","JSESSIONID":"..."}
+LINKDAPI_API_KEY=ваш_api_ключ_из_linkdapi
+# Необязательно: скорректируйте поведение клиента
+# LINKDAPI_MAX_RESULTS=3
+# LINKDAPI_CONCURRENCY=1
+# LINKDAPI_REQUEST_INTERVAL=0.5
+# LINKDAPI_MAX_RETRIES=3
+# LINKDAPI_RETRY_DELAY=1.0
+# LINKDAPI_TIMEOUT=30
 ```
 
 ### 3. Запуск через Docker Compose
@@ -71,43 +74,34 @@ curl http://localhost:8010/api/health
 2. Выберите один из режимов:
    - **Загрузить таблицу**: для массовой обработки фильмов
    - **Поиск по фильму**: для поиска одного фильма
-3. Убедитесь, что в таблице появилась колонка LinkedIn, если заданы учётные данные LinkedIn
+3. Убедитесь, что в таблице появилась колонка LinkedIn, если задан API-ключ LinkdAPI
 
-### LinkedIn обогащение через linkedin-api
+### LinkedIn обогащение через LinkdAPI
 
-- Модуль `services.linkedin_lookup` использует неофициальную библиотеку [`linkedin-api`](https://github.com/nsandman/linkedin-api), которая требует действующие сессионные cookie или логин/пароль реального аккаунта.
-- Данные для авторизации передаются через переменные окружения `LINKEDIN_USERNAME` и `LINKEDIN_PASSWORD` либо через JSON с cookie (`LINKEDIN_COOKIES_JSON` или `LINKEDIN_COOKIES_PATH`).
-- Если переменные не заданы, колонка LinkedIn останется пустой и запросы к LinkedIn выполняться не будут.
+- Модуль `services.linkedin_lookup` использует официальный клиент [`linkdapi`](https://github.com/linkdAPI/linkdapi-sdk) для обращения к API LinkdAPI.
+- Для работы достаточно указать переменную окружения `LINKDAPI_API_KEY`. Если ключ не задан, сервис пропускает обогащение и колонка LinkedIn останется пустой.
+- LinkdAPI возвращает структурированные данные LinkedIn без необходимости управлять cookie или логином.
 
-#### Кастомизация
+#### Кастомизация клиента
 
 | Переменная | Назначение | Значение по умолчанию |
 |------------|------------|-----------------------|
-| `LINKEDIN_USERNAME` / `LINKEDIN_PASSWORD` | Основная авторизация | — |
-| `LINKEDIN_COOKIES_PATH` / `LINKEDIN_COOKIES_JSON` | Альтернатива логину/паролю | — |
-| `LINKEDIN_PROXY` (`LINKEDIN_HTTP_PROXY`, `LINKEDIN_HTTPS_PROXY`) | Прокси для обхода блокировок | — |
-| `LINKEDIN_REQUEST_INTERVAL` | Пауза между запросами (сек.) | `1.5` |
-| `LINKEDIN_MAX_RESULTS` | Сколько профилей анализировать на один запрос | `3` |
-| `LINKEDIN_CONCURRENCY` | Параллельные поиски | `1` |
+| `LINKDAPI_API_KEY` | API-ключ LinkdAPI | — |
+| `LINKDAPI_MAX_RESULTS` | Сколько кандидатур анализировать на запрос | `3` |
+| `LINKDAPI_CONCURRENCY` | Максимум параллельных запросов к LinkdAPI | `1` |
+| `LINKDAPI_REQUEST_INTERVAL` | Минимальный интервал между запросами (сек.) | `0.5` |
+| `LINKDAPI_MAX_RETRIES` | Сколько повторов делать на ошибках | `3` |
+| `LINKDAPI_RETRY_DELAY` | Базовая задержка между ретраями (сек.) | `1.0` |
+| `LINKDAPI_TIMEOUT` | Таймаут HTTP-запросов (сек.) | `30` |
 
-Все переменные уже проброшены в `docker-compose.yml`, поэтому достаточно обновить `.env`.
+Все переменные проброшены в `docker-compose.yml`, поэтому достаточно обновить `.env`.
 
-#### Как получить cookie или сохранить сессию
+#### Как получить API-ключ LinkdAPI
 
-1. Локально установите пакет: `pip install linkedin-api`.
-2. Выполните любой Python-скрипт, который создаёт сессию и сохраняет cookie в файл:
-
-   ```python
-   import json
-   from linkedin_api import Linkedin
-
-   api = Linkedin("email@example.com", "ваш_пароль")
-   with open("linkedin_cookies.json", "w", encoding="utf-8") as fp:
-       json.dump(api.client.session.cookies.get_dict(), fp)
-   ```
-
-3. Скопируйте полученный файл в безопасное место и укажите путь в переменной `LINKEDIN_COOKIES_PATH` (или вставьте содержимое в `LINKEDIN_COOKIES_JSON`).
-4. При необходимости обновляйте cookie, если LinkedIn завершает сессию.
+1. Зарегистрируйтесь на [linkdapi.com](https://linkdapi.com) и перейдите в личный кабинет.
+2. Скопируйте ключ из раздела API.
+3. Вставьте его в `.env` (переменная `LINKDAPI_API_KEY`).
+4. При необходимости скорректируйте ограничения по скорости и ретраям, чтобы вписаться в тарифный план.
 
 #### Загрузка таблицы
 
