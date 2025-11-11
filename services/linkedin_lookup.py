@@ -131,17 +131,35 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
 
 async def _throttled_call(method, *args, **kwargs):
     global _LAST_REQUEST_TS
-    if LINKDAPI_REQUEST_INTERVAL <= 0:
-        return await method(*args, **kwargs)
 
-    async with _THROTTLE_LOCK:
-        now = time.monotonic()
-        wait_for = LINKDAPI_REQUEST_INTERVAL - (now - _LAST_REQUEST_TS)
-        if wait_for > 0:
-            await asyncio.sleep(wait_for)
-        result = await method(*args, **kwargs)
-        _LAST_REQUEST_TS = time.monotonic()
-        return result
+    # Temporarily remove proxy env vars that break LinkdAPI HTTPS requests
+    saved_http_proxy = os.environ.pop("HTTP_PROXY", None)
+    saved_https_proxy = os.environ.pop("HTTPS_PROXY", None)
+    saved_http_proxy_lower = os.environ.pop("http_proxy", None)
+    saved_https_proxy_lower = os.environ.pop("https_proxy", None)
+
+    try:
+        if LINKDAPI_REQUEST_INTERVAL <= 0:
+            return await method(*args, **kwargs)
+
+        async with _THROTTLE_LOCK:
+            now = time.monotonic()
+            wait_for = LINKDAPI_REQUEST_INTERVAL - (now - _LAST_REQUEST_TS)
+            if wait_for > 0:
+                await asyncio.sleep(wait_for)
+            result = await method(*args, **kwargs)
+            _LAST_REQUEST_TS = time.monotonic()
+            return result
+    finally:
+        # Restore proxy variables for other APIs
+        if saved_http_proxy is not None:
+            os.environ["HTTP_PROXY"] = saved_http_proxy
+        if saved_https_proxy is not None:
+            os.environ["HTTPS_PROXY"] = saved_https_proxy
+        if saved_http_proxy_lower is not None:
+            os.environ["http_proxy"] = saved_http_proxy_lower
+        if saved_https_proxy_lower is not None:
+            os.environ["https_proxy"] = saved_https_proxy_lower
 
 
 def _candidate_text(candidate: Dict[str, Any]) -> str:
