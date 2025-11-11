@@ -11,6 +11,13 @@ services:
       - TMDB_BASE_URL=https://api.themoviedb.org/3
       - HOST=0.0.0.0
       - PORT=8010
+      - APIFY_TOKEN=${APIFY_TOKEN:-}
+      - APIFY_LINKEDIN_ACTOR_ID=${APIFY_LINKEDIN_ACTOR_ID:-harvestapi~linkedin-profile-search-by-name}
+      - APIFY_LINKEDIN_PROFILE_MODE=${APIFY_LINKEDIN_PROFILE_MODE:-Full}
+      - APIFY_LINKEDIN_MAX_ITEMS=${APIFY_LINKEDIN_MAX_ITEMS:-5}
+      - APIFY_LINKEDIN_MAX_PAGES=${APIFY_LINKEDIN_MAX_PAGES:-1}
+      - APIFY_LINKEDIN_CONCURRENCY=${APIFY_LINKEDIN_CONCURRENCY:-3}
+      - APIFY_LINKEDIN_TIMEOUT=${APIFY_LINKEDIN_TIMEOUT:-45}
     env_file:
       - .env
     restart: unless-stopped
