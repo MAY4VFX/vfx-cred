@@ -473,7 +473,12 @@ async def search_movie(movie: MovieRequest):
         movie_title = movie_details.get("title") or movie_details.get("name") or movie.title or "Unknown"
         vfx_crew = filter_vfx_crew(credits, movie_title, movie.imdb_id or "N/A")
 
-        await enrich_crew_with_linkedin(vfx_crew)
+        # LinkedIn enrichment is optional - don't block API if it fails
+        try:
+            await enrich_crew_with_linkedin(vfx_crew)
+        except Exception as e:
+            import logging
+            logging.warning(f"LinkedIn enrichment failed: {e}")
 
         vfx_crew_payload = [member.dict() for member in vfx_crew]
 
