@@ -84,16 +84,20 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
 
     async with _CLIENT_LOCK:
         if _CLIENT is not None:
+            logger.debug("LinkdAPI клиент уже инициализирован")
             return _CLIENT
         if _CLIENT_INITIALIZED and _CLIENT is None:
+            logger.debug("LinkdAPI клиент ранее был отключён")
             return None
         try:
+            logger.info("Инициализация LinkdAPI клиента...")
             _CLIENT = AsyncLinkdAPI(
                 LINKDAPI_API_KEY,
                 timeout=LINKDAPI_TIMEOUT,
                 max_retries=LINKDAPI_MAX_RETRIES,
                 retry_delay=LINKDAPI_RETRY_DELAY,
             )
+            logger.info("LinkdAPI клиент успешно инициализирован")
         except Exception as exc:  # pragma: no cover - внешняя зависимость
             logger.warning("Не удалось инициализировать LinkdAPI-клиент: %s", exc)
             _CLIENT = None
