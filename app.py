@@ -470,6 +470,67 @@ async def get_all_crew(movie: MovieRequest):
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
+@app.post("/api/collect-jobs-stats")
+async def collect_jobs_stats(movies: List[MovieRequest]):
+    """Collect all unique jobs/departments from multiple movies to build a dictionary"""
+    try:
+        all_jobs = {}  # {department: set of jobs}
+        processed = 0
+        errors = 0
+
+        for movie in movies:
+            try:
+                tmdb_info = None
+
+                if movie.imdb_id:
+                    imdb_id = extract_imdb_id(movie.imdb_id)
+                    if imdb_id:
+                        tmdb_info = get_tmdb_id_from_imdb(imdb_id)
+
+                if not tmdb_info:
+                    errors += 1
+                    continue
+
+                tmdb_id = tmdb_info.get("id")
+                media_type = tmdb_info.get("type", "movie")
+                credits = get_movie_credits(tmdb_id, media_type)
+
+                if not credits or "crew" not in credits:
+                    errors += 1
+                    continue
+
+                # Collect all unique jobs
+                for member in credits["crew"]:
+                    dept = member.get("department", "Unknown")
+                    job = member.get("job", "Unknown")
+
+                    if dept not in all_jobs:
+                        all_jobs[dept] = set()
+                    all_jobs[dept].add(job)
+
+                processed += 1
+
+            except Exception as e:
+                errors += 1
+                print(f"Error processing movie: {e}")
+                continue
+
+        # Convert sets to lists for JSON serialization
+        result = {dept: sorted(list(jobs)) for dept, jobs in all_jobs.items()}
+
+        return {
+            "success": True,
+            "processed": processed,
+            "errors": errors,
+            "unique_jobs_by_department": result,
+            "total_unique_departments": len(result),
+            "total_unique_jobs": sum(len(jobs) for jobs in result.values())
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
