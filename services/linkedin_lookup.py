@@ -209,6 +209,8 @@ def _candidate_name(candidate: Dict[str, Any]) -> Optional[str]:
 
 
 async def _lookup_profile(client: AsyncLinkdAPI, name: str, job: str) -> Optional[Dict[str, Any]]:
+    logger.info(f"LinkedIn lookup started for: {name} ({job})")
+
     name_parts = _split_name(name)
     search_kwargs: Dict[str, Any] = {
         "keyword": f"{name} {job}".strip(),
@@ -219,16 +221,21 @@ async def _lookup_profile(client: AsyncLinkdAPI, name: str, job: str) -> Optiona
 
     # удалить пустые значения
     search_kwargs = {k: v for k, v in search_kwargs.items() if v}
+    logger.info(f"Search params: {search_kwargs}")
 
     try:
+        logger.info("Calling LinkdAPI search_people...")
         search_response = await _throttled_call(client.search_people, **search_kwargs)
+        logger.info(f"LinkdAPI response type: {type(search_response).__name__}")
+        logger.info(f"LinkdAPI response: {str(search_response)[:500]}")
     except Exception as exc:  # pragma: no cover - внешняя зависимость
-        logger.warning("LinkdAPI: ошибка поиска для %s — %s", name, exc)
+        logger.error(f"LinkdAPI error for {name}: {exc}", exc_info=True)
         return None
 
     candidates: List[Dict[str, Any]] = []
     if isinstance(search_response, dict):
         data = search_response.get("data")
+        logger.info(f"Response data type: {type(data).__name__}")
         if isinstance(data, list):
             candidates = data
         elif isinstance(data, dict):
@@ -236,7 +243,9 @@ async def _lookup_profile(client: AsyncLinkdAPI, name: str, job: str) -> Optiona
     elif isinstance(search_response, list):
         candidates = search_response
 
+    logger.info(f"Found {len(candidates)} candidates")
     if not candidates:
+        logger.info(f"No candidates found for {name}")
         return None
 
     job_tokens = _tokenize_job(job)

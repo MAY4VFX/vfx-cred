@@ -508,12 +508,16 @@ async def lookup_linkedin(name: str, job: str):
     Returns LinkedIn URL, profile name, headline, and confidence score
     """
     try:
+        logger.info(f"LinkedIn lookup endpoint called: name={name}, job={job}")
+
         if not name or not name.strip():
             raise HTTPException(status_code=400, detail="Name is required")
         if not job or not job.strip():
             raise HTTPException(status_code=400, detail="Job is required")
 
+        logger.info(f"Starting find_linkedin_profile for {name.strip()}")
         profile = await find_linkedin_profile(name.strip(), job.strip())
+        logger.info(f"find_linkedin_profile returned: {profile}")
 
         if profile:
             return {
@@ -536,7 +540,7 @@ async def lookup_linkedin(name: str, job: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.warning(f"LinkedIn lookup error for {name}: {e}")
+        logger.error(f"LinkedIn lookup error for {name}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error looking up LinkedIn: {str(e)}")
 
 
