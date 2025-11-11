@@ -28,7 +28,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Development with hot-reload
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app:app --host 0.0.0.0 --port 8010 --reload
 
 # Or run directly
 python app.py
@@ -55,7 +55,7 @@ docker-compose down
 ### Health Check
 
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8010/api/health
 ```
 
 ## Project Structure
@@ -184,13 +184,13 @@ Configure the following in Dokploy UI:
 
 **Application Settings:**
 - Build Type: `dockerfile`
-- Port: `8000` (container) → `8010` (host)
+- Port: `8010` (direct, no mapping needed)
 
 **Environment Variables:**
 ```
 TMDB_API_KEY=<your_api_key>
 TMDB_BASE_URL=https://api.themoviedb.org/3
-PORT=8000
+PORT=8010
 HOST=0.0.0.0
 HTTPS_PROXY=socks5://<proxy_host>:<proxy_port>  # Optional for geo-blocking
 HTTP_PROXY=socks5://<proxy_host>:<proxy_port>   # Optional for geo-blocking

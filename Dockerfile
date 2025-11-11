@@ -27,11 +27,11 @@ RUN useradd -m -u 1000 appuser && \
 USER appuser
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8010
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/api/health')"
+    CMD python -c "import requests; requests.get('http://localhost:8010/api/health')"
 
-# Run the application
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application - use port from environment or default to 8010
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8010"]
