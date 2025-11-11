@@ -277,6 +277,47 @@
             border-bottom: 1px solid #f0f0f0;
         }
 
+        .btn-action {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: all 0.2s;
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-action:hover {
+            background: #e0e0e0;
+            transform: translateY(-1px);
+        }
+
+        .btn-action.btn-fetch {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-action.btn-fetch:hover {
+            background: #5568d3;
+        }
+
+        .btn-action:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-action.loading::after {
+            content: ' ⟳';
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         tbody tr:hover {
             background: #f8f9ff;
         }
@@ -486,6 +527,7 @@
 
                 <div class="results-actions">
                     <input type="text" class="filter-input" id="filterInput" placeholder="🔍 Фильтр по имени, должности или фильму...">
+                    <button class="btn btn-secondary" id="linkedinBtn" onclick="fetchLinkedInForAll()" title="Получить LinkedIn профили для всех видимых людей">🔗 LinkedIn для всех</button>
                     <button class="btn btn-secondary" id="exportBtn">📥 Экспорт в Excel</button>
                 </div>
 
@@ -515,6 +557,7 @@
                                 <th>Фильм</th>
                                 <th>IMDB ID</th>
                                 <th>LinkedIn</th>
+                                <th style="text-align: center;">Действие</th>
                             </tr>
                         </thead>
                         <tbody id="resultsTable">
@@ -879,6 +922,112 @@
                 .replace(/'/g, '&#39;');
         }
 
+        async function fetchLinkedInForPerson(name, job, buttonEl) {
+            if (!buttonEl) return;
+
+            buttonEl.disabled = true;
+            const originalText = buttonEl.textContent;
+            buttonEl.textContent = 'Поиск...';
+            buttonEl.classList.add('loading');
+
+            try {
+                const response = await fetch('/api/linkedin-lookup?' + new URLSearchParams({
+                    name: name,
+                    job: job
+                }), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+
+                if (result.success && result.linkedin_url) {
+                    // Update currentData and filteredData with LinkedIn info
+                    const person = currentData.find(p => p.name === name && p.job === job);
+                    if (person) {
+                        person.linkedin_url = result.linkedin_url;
+                        person.linkedin_profile_name = result.linkedin_profile_name;
+                        person.linkedin_headline = result.linkedin_headline;
+                        person.linkedin_confidence = result.linkedin_confidence;
+                    }
+
+                    renderTable();
+                    showAlert('success', `LinkedIn найден для ${name}`);
+                } else {
+                    showAlert('error', `LinkedIn не найден для ${name}`);
+                }
+            } catch (error) {
+                console.error('LinkedIn lookup error:', error);
+                showAlert('error', `Ошибка при поиске LinkedIn: ${error.message}`);
+            } finally {
+                buttonEl.disabled = false;
+                buttonEl.textContent = originalText;
+                buttonEl.classList.remove('loading');
+            }
+        }
+
+        function openLinkedin(buttonEl) {
+            const row = buttonEl.closest('tr');
+            const linkedinLink = row.querySelector('a[href*="linkedin"]');
+            if (linkedinLink) {
+                linkedinLink.click();
+            }
+        }
+
+        function fetchLinkedInForAll() {
+            const count = filteredData.filter(p => !p.linkedin_url).length;
+            if (count === 0) {
+                showAlert('info', 'Все видимые люди уже имеют LinkedIn профили');
+                return;
+            }
+
+            if (!confirm(`Получить LinkedIn профили для ${count} человека? Это может занять несколько минут.`)) {
+                return;
+            }
+
+            const button = event.target;
+            button.disabled = true;
+            const originalText = button.textContent;
+            button.textContent = `Загрузка (0/${count})...`;
+
+            let completed = 0;
+            const promises = filteredData
+                .filter(p => !p.linkedin_url)
+                .map(person =>
+                    fetch('/api/linkedin-lookup?' + new URLSearchParams({
+                        name: person.name,
+                        job: person.job
+                    }), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.success && result.linkedin_url) {
+                            person.linkedin_url = result.linkedin_url;
+                            person.linkedin_profile_name = result.linkedin_profile_name;
+                            person.linkedin_headline = result.linkedin_headline;
+                            person.linkedin_confidence = result.linkedin_confidence;
+                        }
+                        completed++;
+                        button.textContent = `Загрузка (${completed}/${count})...`;
+                        return result;
+                    })
+                    .catch(err => {
+                        completed++;
+                        button.textContent = `Загрузка (${completed}/${count})...`;
+                        return null;
+                    })
+                );
+
+            Promise.all(promises).then(() => {
+                renderTable();
+                button.disabled = false;
+                button.textContent = originalText;
+                showAlert('success', `LinkedIn профили загружены для ${completed} человека`);
+            });
+        }
+
         function displayResults(data) {
             document.getElementById('totalMovies').textContent = data.processed_movies.length;
             document.getElementById('totalCrew').textContent = data.total_vfx_crew;
@@ -902,11 +1051,11 @@
             tbody.innerHTML = '';
 
             if (filteredData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">Данные не найдены</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: #999;">Данные не найдены</td></tr>';
                 return;
             }
 
-            filteredData.forEach(crew => {
+            filteredData.forEach((crew, index) => {
                 const row = document.createElement('tr');
                 const confidence = typeof crew.linkedin_confidence === 'number'
                     ? ` (${Math.round(crew.linkedin_confidence * 100)}%)`
@@ -919,6 +1068,10 @@
                     ? `<a href="${linkedinUrl}" target="_blank" rel="noopener noreferrer" title="${linkTitle}">${linkLabel}</a>${confidence}`
                     : '<span class="badge badge-muted">Не найдено</span>';
 
+                const actionButton = crew.linkedin_url
+                    ? '<button class="btn-action" onclick="openLinkedin(this)" title="Открыть профиль">↗</button>'
+                    : '<button class="btn-action btn-fetch" onclick="fetchLinkedInForPerson(\'' + crew.name.replace(/'/g, "\\'") + '\', \'' + crew.job.replace(/'/g, "\\'") + '\', this)">Найти</button>';
+
                 row.innerHTML = `
                     <td><strong>${escapeHtml(crew.name)}</strong></td>
                     <td><span class="badge">${escapeHtml(crew.job)}</span></td>
@@ -926,6 +1079,7 @@
                     <td>${escapeHtml(crew.movie_title)}</td>
                     <td>${imdbValue}</td>
                     <td>${linkedinCell}</td>
+                    <td style="text-align: center;">${actionButton}</td>
                 `;
                 tbody.appendChild(row);
             });

@@ -14,7 +14,7 @@ import requests
 import pandas as pd
 from dotenv import load_dotenv
 
-from services.linkedin_lookup import enrich_crew_with_linkedin
+from services.linkedin_lookup import enrich_crew_with_linkedin, find_linkedin_profile
 
 logger = logging.getLogger(__name__)
 
@@ -477,13 +477,8 @@ async def search_movie(movie: MovieRequest):
         movie_title = movie_details.get("title") or movie_details.get("name") or movie.title or "Unknown"
         vfx_crew = filter_vfx_crew(credits, movie_title, movie.imdb_id or "N/A")
 
-        # LinkedIn enrichment is optional - don't block API if it fails or times out
-        try:
-            await asyncio.wait_for(enrich_crew_with_linkedin(vfx_crew), timeout=120.0)
-        except asyncio.TimeoutError:
-            logger.warning(f"LinkedIn enrichment timed out after 120s")
-        except Exception as e:
-            logger.warning(f"LinkedIn enrichment failed: {e}")
+        # LinkedIn enrichment is now done on-demand via /api/linkedin-lookup endpoint
+        # to avoid burning API tokens during initial movie load
 
         vfx_crew_payload = [member.dict() for member in vfx_crew]
 
@@ -504,6 +499,45 @@ async def search_movie(movie: MovieRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error searching movie: {str(e)}")
+
+
+@app.post("/api/linkedin-lookup")
+async def lookup_linkedin(name: str, job: str):
+    """
+    Lookup LinkedIn profile for a specific person
+    Returns LinkedIn URL, profile name, headline, and confidence score
+    """
+    try:
+        if not name or not name.strip():
+            raise HTTPException(status_code=400, detail="Name is required")
+        if not job or not job.strip():
+            raise HTTPException(status_code=400, detail="Job is required")
+
+        profile = await find_linkedin_profile(name.strip(), job.strip())
+
+        if profile:
+            return {
+                "success": True,
+                "name": name,
+                "job": job,
+                "linkedin_url": profile.get("url"),
+                "linkedin_profile_name": profile.get("profile_name"),
+                "linkedin_headline": profile.get("headline"),
+                "linkedin_confidence": profile.get("confidence")
+            }
+        else:
+            return {
+                "success": False,
+                "name": name,
+                "job": job,
+                "message": "No LinkedIn profile found"
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"LinkedIn lookup error for {name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error looking up LinkedIn: {str(e)}")
 
 
 @app.post("/api/export")
