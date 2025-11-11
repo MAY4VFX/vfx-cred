@@ -30,6 +30,18 @@ app.add_middleware(
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 TMDB_BASE_URL = os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3")
 
+# Proxy configuration for bypassing geo-blocking
+PROXIES = {}
+if os.getenv("HTTP_PROXY"):
+    PROXIES["http"] = os.getenv("HTTP_PROXY")
+if os.getenv("HTTPS_PROXY"):
+    PROXIES["https"] = os.getenv("HTTPS_PROXY")
+# Support both uppercase and lowercase
+if os.getenv("http_proxy") and not PROXIES.get("http"):
+    PROXIES["http"] = os.getenv("http_proxy")
+if os.getenv("https_proxy") and not PROXIES.get("https"):
+    PROXIES["https"] = os.getenv("https_proxy")
+
 # VFX-related job titles to filter
 VFX_JOBS = [
     "vfx",
@@ -91,7 +103,7 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
             "api_key": TMDB_API_KEY,
             "external_source": "imdb_id"
         }
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -110,7 +122,7 @@ def get_movie_credits(tmdb_id: str) -> Optional[Dict]:
     try:
         url = f"{TMDB_BASE_URL}/movie/{tmdb_id}/credits"
         params = {"api_key": TMDB_API_KEY}
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -123,7 +135,7 @@ def get_movie_details(tmdb_id: str) -> Optional[Dict]:
     try:
         url = f"{TMDB_BASE_URL}/movie/{tmdb_id}"
         params = {"api_key": TMDB_API_KEY}
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         return response.json()
     except Exception as e:
