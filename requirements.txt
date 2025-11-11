@@ -9,3 +9,4 @@ aiohttp==3.9.1
 python-multipart==0.0.6
 linkdapi==1.0.2
 httpx[socks]==0.25.0
+socksio>=1.0.0
