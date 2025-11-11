@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/may/vfx-cred/vfx-cred/logs/.0f09a29b56084df29aa948f7ae77cec935bfdc9a-audit.json",
+    "files": [
+        {
+            "date": 1762856492227,
+            "name": "/Users/may/vfx-cred/vfx-cred/logs/mcp-puppeteer-2025-11-11.log",
+            "hash": "8eacdb295bb822ed823d2b8f58e738b4e0ab0e495183ea578442f1bb592b42a1"
+        }
+    ],
+    "hashType": "sha256"
+}

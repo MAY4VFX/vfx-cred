@@ -256,20 +256,29 @@ def get_movie_details(tmdb_id: str, media_type: str = "movie") -> Optional[Dict]
         return None
 
 
-def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str) -> List[CrewMember]:
-    """Filter VFX crew members from credits using configured rules"""
-    vfx_crew = []
+def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str, apply_filter: bool = False) -> List[CrewMember]:
+    """
+    Get crew members from credits
+
+    Args:
+        credits: Credits data from TMDb API
+        movie_title: Title of the movie/show
+        imdb_id: IMDB ID
+        apply_filter: If True, apply configured VFX filtering. If False, return ALL crew members.
+    """
+    crew = []
 
     if not credits or "crew" not in credits:
-        return vfx_crew
+        return crew
 
     for member in credits["crew"]:
         job = member.get("job", "")
         department = member.get("department", "")
         name = member.get("name", "")
 
-        if is_vfx_job(job, department):
-            vfx_crew.append(CrewMember(
+        # If filtering is disabled (default), include everyone
+        if not apply_filter or is_vfx_job(job, department):
+            crew.append(CrewMember(
                 name=name,
                 job=job,
                 department=department,
@@ -277,7 +286,7 @@ def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str) -> List[CrewM
                 imdb_id=imdb_id
             ))
 
-    return vfx_crew
+    return crew
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -293,6 +302,24 @@ async def read_root():
                 <h1>VFX Credits Filter Service</h1>
                 <p>Please ensure static/index.html exists</p>
                 <p>API Documentation: <a href="/docs">/docs</a></p>
+                <p><a href="/crew-browser">Go to Crew Browser →</a></p>
+            </body>
+        </html>
+        """
+
+
+@app.get("/crew-browser", response_class=HTMLResponse)
+async def crew_browser():
+    """Serve the crew browser page with interactive filters"""
+    try:
+        with open("static/crew-browser.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return """
+        <html>
+            <body>
+                <h1>Crew Browser</h1>
+                <p>Please ensure static/crew-browser.html exists</p>
             </body>
         </html>
         """

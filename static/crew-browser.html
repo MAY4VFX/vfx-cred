@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crew Browser - VFX Credits Filter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            min-height: 90vh;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            border-right: 1px solid #e0e0e0;
+            padding: 25px;
+            overflow-y: auto;
+            max-height: 90vh;
+        }
+
+        .sidebar h2 {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .filter-section {
+            margin-bottom: 25px;
+        }
+
+        .filter-section h3 {
+            font-size: 0.95em;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+            accent-color: #667eea;
+        }
+
+        .checkbox-item label {
+            cursor: pointer;
+            flex: 1;
+            font-size: 0.95em;
+            color: #333;
+        }
+
+        .checkbox-item input[type="checkbox"]:checked + label {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .count-badge {
+            display: inline-block;
+            background: #e8eaf6;
+            color: #667eea;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin-left: auto;
+            font-weight: 600;
+        }
+
+        .main {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 40px;
+        }
+
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 0.95em;
+        }
+
+        .content {
+            flex: 1;
+            padding: 30px 40px;
+            overflow-y: auto;
+        }
+
+        .movie-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .movie-input input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.2s;
+        }
+
+        .movie-input input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .movie-input button {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-weight: 600;
+        }
+
+        .movie-input button:hover {
+            background: #5568d3;
+        }
+
+        .crew-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .crew-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .crew-item.hidden {
+            display: none;
+        }
+
+        .crew-info {
+            flex: 1;
+        }
+
+        .crew-name {
+            font-weight: 600;
+            font-size: 1.05em;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .crew-job {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 3px;
+        }
+
+        .crew-dept {
+            color: #999;
+            font-size: 0.85em;
+        }
+
+        .crew-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            background: #e8eaf6;
+            color: #667eea;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .stats {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            opacity: 0.3;
+            margin-bottom: 20px;
+        }
+
+        button.reset {
+            width: 100%;
+            padding: 10px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+
+        button.reset:hover {
+            background: #d32f2f;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>🎬 Фильтры</h2>
+
+            <div class="filter-section">
+                <h3>Departments</h3>
+                <div class="checkbox-group" id="departmentFilters"></div>
+            </div>
+
+            <div class="filter-section">
+                <h3>Jobs</h3>
+                <div class="checkbox-group" id="jobFilters"></div>
+            </div>
+
+            <button class="reset" onclick="resetFilters()">Очистить фильтры</button>
+        </div>
+
+        <div class="main">
+            <div class="header">
+                <h1>🎥 Crew Browser</h1>
+                <p>Выберите фильм и отфильтруйте crew members</p>
+            </div>
+
+            <div class="content">
+                <div class="movie-input">
+                    <input type="text" id="imdbInput" placeholder="Введите IMDB ID (например: tt16311594)">
+                    <button onclick="loadMovie()">Загрузить</button>
+                </div>
+
+                <div id="stats" class="stats" style="display: none;"></div>
+                <div id="content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allCrew = [];
+        let departments = new Set();
+        let jobs = new Set();
+        const selectedDepartments = new Set();
+        const selectedJobs = new Set();
+
+        async function loadMovie() {
+            const imdbId = document.getElementById('imdbInput').value.trim();
+            if (!imdbId) {
+                alert('Пожалуйста, введите IMDB ID');
+                return;
+            }
+
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = '<div class="loading"><div class="spinner"></div><p>Загружаю данные...</p></div>';
+
+            try {
+                const response = await fetch('/api/get-all-crew', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imdb_id: imdbId })
+                });
+
+                const data = await response.json();
+
+                if (!data.success) {
+                    contentDiv.innerHTML = `<div class="empty-state"><p>❌ ${data.detail || 'Фильм не найден'}</p></div>`;
+                    return;
+                }
+
+                // Собираем все crew members
+                allCrew = [];
+                departments.clear();
+                jobs.clear();
+
+                for (const [dept, jobsObj] of Object.entries(data.hierarchy)) {
+                    departments.add(dept);
+                    for (const [job, names] of Object.entries(jobsObj)) {
+                        jobs.add(job);
+                        for (const name of names) {
+                            allCrew.push({ name, job, department: dept });
+                        }
+                    }
+                }
+
+                // Обновляем фильтры
+                updateFilters();
+                renderCrew();
+                contentDiv.innerHTML = '';
+                updateStats();
+
+            } catch (error) {
+                contentDiv.innerHTML = `<div class="empty-state"><p>❌ Ошибка при загрузке: ${error.message}</p></div>`;
+            }
+        }
+
+        function updateFilters() {
+            // Departments
+            const deptDiv = document.getElementById('departmentFilters');
+            deptDiv.innerHTML = '';
+            for (const dept of Array.from(departments).sort()) {
+                const count = allCrew.filter(c => c.department === dept).length;
+                const html = `
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="dept_${dept}" onchange="filterChanged()" value="${dept}">
+                        <label for="dept_${dept}">${dept}</label>
+                        <span class="count-badge">${count}</span>
+                    </div>
+                `;
+                deptDiv.innerHTML += html;
+            }
+
+            // Jobs
+            const jobDiv = document.getElementById('jobFilters');
+            jobDiv.innerHTML = '';
+            for (const job of Array.from(jobs).sort()) {
+                const count = allCrew.filter(c => c.job === job).length;
+                const html = `
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="job_${job}" onchange="filterChanged()" value="${job}">
+                        <label for="job_${job}">${job}</label>
+                        <span class="count-badge">${count}</span>
+                    </div>
+                `;
+                jobDiv.innerHTML += html;
+            }
+        }
+
+        function filterChanged() {
+            selectedDepartments.clear();
+            selectedJobs.clear();
+
+            document.querySelectorAll('#departmentFilters input:checked').forEach(input => {
+                selectedDepartments.add(input.value);
+            });
+
+            document.querySelectorAll('#jobFilters input:checked').forEach(input => {
+                selectedJobs.add(input.value);
+            });
+
+            renderCrew();
+            updateStats();
+        }
+
+        function renderCrew() {
+            const contentDiv = document.getElementById('content');
+
+            // Фильтруем crew
+            let filtered = allCrew;
+            if (selectedDepartments.size > 0 || selectedJobs.size > 0) {
+                filtered = allCrew.filter(crew => {
+                    const deptMatch = selectedDepartments.size === 0 || selectedDepartments.has(crew.department);
+                    const jobMatch = selectedJobs.size === 0 || selectedJobs.has(crew.job);
+                    return deptMatch && jobMatch;
+                });
+            }
+
+            if (filtered.length === 0) {
+                contentDiv.innerHTML = '<div class="empty-state"><p>😴 Никого не найдено с таким фильтром</p></div>';
+                return;
+            }
+
+            let html = '<div class="crew-list">';
+            for (const crew of filtered) {
+                html += `
+                    <div class="crew-item">
+                        <div class="crew-info">
+                            <div class="crew-name">${crew.name}</div>
+                            <div class="crew-job">📌 ${crew.job}</div>
+                            <div class="crew-dept">🎬 ${crew.department}</div>
+                        </div>
+                        <div class="crew-tags">
+                            <span class="tag">${crew.department}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            contentDiv.innerHTML = html;
+        }
+
+        function updateStats() {
+            const filtered = allCrew.filter(crew => {
+                const deptMatch = selectedDepartments.size === 0 || selectedDepartments.has(crew.department);
+                const jobMatch = selectedJobs.size === 0 || selectedJobs.has(crew.job);
+                return deptMatch && jobMatch;
+            });
+
+            const statsDiv = document.getElementById('stats');
+            if (allCrew.length > 0) {
+                statsDiv.style.display = 'grid';
+                statsDiv.innerHTML = `
+                    <div class="stat">
+                        <div class="stat-value">${filtered.length}</div>
+                        <div class="stat-label">Показано</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">${allCrew.length}</div>
+                        <div class="stat-label">Всего</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">${departments.size}</div>
+                        <div class="stat-label">Departments</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">${jobs.size}</div>
+                        <div class="stat-label">Jobs</div>
+                    </div>
+                `;
+            }
+        }
+
+        function resetFilters() {
+            document.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                input.checked = false;
+            });
+            selectedDepartments.clear();
+            selectedJobs.clear();
+            renderCrew();
+            updateStats();
+        }
+
+        // Auto-load when page loads
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const imdbId = urlParams.get('imdb_id');
+            if (imdbId) {
+                document.getElementById('imdbInput').value = imdbId;
+                loadMovie();
+            }
+        });
+    </script>
+</body>
+</html>
