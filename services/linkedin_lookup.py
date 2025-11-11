@@ -7,14 +7,12 @@ import re
 import time
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-# Disable SOCKS proxy before importing LinkdAPI (LinkdAPI doesn't work with SOCKS proxy from requests)
-os.environ.pop("HTTP_PROXY", None)
-os.environ.pop("HTTPS_PROXY", None)
-
 try:  # pragma: no cover - внешняя зависимость
     from linkdapi import AsyncLinkdAPI
+    import httpx
 except ImportError:  # pragma: no cover - опциональная зависимость
     AsyncLinkdAPI = None  # type: ignore[assignment]
+    httpx = None  # type: ignore[assignment]
 
 
 logger = logging.getLogger(__name__)
@@ -95,12 +93,31 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
             return None
         try:
             logger.info("Инициализация LinkdAPI клиента...")
-            _CLIENT = AsyncLinkdAPI(
-                LINKDAPI_API_KEY,
-                timeout=LINKDAPI_TIMEOUT,
-                max_retries=LINKDAPI_MAX_RETRIES,
-                retry_delay=LINKDAPI_RETRY_DELAY,
-            )
+
+            # Create httpx client without proxy for LinkdAPI
+            # (LinkdAPI doesn't work with SOCKS proxy environment variables)
+            if httpx is not None:
+                http_client = httpx.AsyncClient(
+                    mounts={
+                        "http://": httpx.AsyncHTTPTransport(proxy=None),
+                        "https://": httpx.AsyncHTTPTransport(proxy=None),
+                    },
+                    timeout=LINKDAPI_TIMEOUT,
+                )
+                _CLIENT = AsyncLinkdAPI(
+                    LINKDAPI_API_KEY,
+                    client=http_client,
+                    timeout=LINKDAPI_TIMEOUT,
+                    max_retries=LINKDAPI_MAX_RETRIES,
+                    retry_delay=LINKDAPI_RETRY_DELAY,
+                )
+            else:
+                _CLIENT = AsyncLinkdAPI(
+                    LINKDAPI_API_KEY,
+                    timeout=LINKDAPI_TIMEOUT,
+                    max_retries=LINKDAPI_MAX_RETRIES,
+                    retry_delay=LINKDAPI_RETRY_DELAY,
+                )
             logger.info("LinkdAPI клиент успешно инициализирован")
 
         except Exception as exc:  # pragma: no cover - внешняя зависимость
