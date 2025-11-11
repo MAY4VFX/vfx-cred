@@ -149,23 +149,34 @@ def _create_client() -> Optional[Linkedin]:
         return None
 
     cookies = _load_cookies()
-    if not cookies and (not LINKEDIN_USERNAME or not LINKEDIN_PASSWORD):
-        logger.warning("Не заданы учетные данные LinkedIn — пропускаем обогащение")
-        return None
-
     username = LINKEDIN_USERNAME or ""
     password = LINKEDIN_PASSWORD or ""
     proxies = _build_proxies()
 
+    # If we have cookies, use them. Otherwise require username/password
+    if not cookies and (not username or not password):
+        logger.warning("Не заданы учетные данные LinkedIn — пропускаем обогащение")
+        return None
+
     try:
-        # Always pass proxies dict (never None) to avoid TypeError in linkedin-api
-        logger.debug(f"Initializing LinkedIn client with username={username}, proxies={bool(proxies)}, cookies={bool(cookies)}")
-        return Linkedin(
-            username,
-            password,
-            cookies=cookies,
-            proxies=proxies if proxies else {},
-        )
+        logger.debug(f"Initializing LinkedIn client with username={username if not cookies else 'cookies'}, proxies={bool(proxies)}")
+
+        # If cookies are provided, use only cookies (no password needed)
+        # If cookies are not provided, use username/password to authenticate
+        if cookies:
+            # Use cookies only - don't pass username/password
+            return Linkedin(
+                "", "",  # Empty username/password when using cookies
+                cookies=cookies,
+                proxies=proxies if proxies else {},
+            )
+        else:
+            # Use username/password authentication
+            return Linkedin(
+                username,
+                password,
+                proxies=proxies if proxies else {},
+            )
     except Exception as exc:  # pragma: no cover - внешняя зависимость
         logger.warning(f"Ошибка инициализации клиента LinkedIn: {type(exc).__name__}: {exc}")
         import traceback
