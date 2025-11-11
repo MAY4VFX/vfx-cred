@@ -146,11 +146,15 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
         print(f"DEBUG: Response status for {imdb_id}: {response.status_code}")
         response.raise_for_status()
         data = response.json()
+        print(f"DEBUG: API Response for {imdb_id}: {data}")
 
         # Check movie results
         if data.get("movie_results"):
-            return str(data["movie_results"][0]["id"])
+            tmdb_id = str(data["movie_results"][0]["id"])
+            print(f"DEBUG: Found TMDB ID {tmdb_id} for IMDB {imdb_id}")
+            return tmdb_id
 
+        print(f"DEBUG: No movie results found for {imdb_id}")
         return None
     except Exception as e:
         print(f"Error converting IMDB ID {imdb_id}: {e}")
