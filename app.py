@@ -13,6 +13,10 @@ import requests
 import pandas as pd
 from dotenv import load_dotenv
 
+# Suppress SSL warnings when using proxies
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 load_dotenv()
 
 app = FastAPI(title="VFX Credits Filter Service")
@@ -103,7 +107,7 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
             "api_key": TMDB_API_KEY,
             "external_source": "imdb_id"
         }
-        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
+        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10, verify=False)
         response.raise_for_status()
         data = response.json()
 
@@ -122,7 +126,7 @@ def get_movie_credits(tmdb_id: str) -> Optional[Dict]:
     try:
         url = f"{TMDB_BASE_URL}/movie/{tmdb_id}/credits"
         params = {"api_key": TMDB_API_KEY}
-        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
+        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10, verify=False)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -135,7 +139,7 @@ def get_movie_details(tmdb_id: str) -> Optional[Dict]:
     try:
         url = f"{TMDB_BASE_URL}/movie/{tmdb_id}"
         params = {"api_key": TMDB_API_KEY}
-        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
+        response = requests.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10, verify=False)
         response.raise_for_status()
         return response.json()
     except Exception as e:
