@@ -210,6 +210,8 @@ def _call_linkedin(func, *args, **kwargs):
             time.sleep(wait_for)
         result = func(*args, **kwargs)
         _LAST_REQUEST_TS = time.monotonic()
+        # Debug: log raw response
+        logger.debug(f"LinkedIn API response type: {type(result)}, value: {result}")
         return result
 
 
