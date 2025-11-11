@@ -494,8 +494,8 @@
                         <div class="filter-buttons-group" id="deptButtonsGroup"></div>
                     </div>
 
-                    <div class="filter-buttons-section">
-                        <h4>💼 Должности (Jobs)</h4>
+                    <div class="filter-buttons-section" id="jobsSection" style="display: none;">
+                        <h4>💼 Должности в <strong id="selectedDeptName"></strong></h4>
                         <div class="filter-buttons-group" id="jobsButtonsGroup"></div>
                     </div>
                 </div>
@@ -668,11 +668,9 @@
 
         function createFilterButtons() {
             const departments = new Set();
-            const jobs = new Set();
 
             currentData.forEach(crew => {
                 departments.add(crew.department);
-                jobs.add(crew.job);
             });
 
             // Create department buttons
@@ -688,19 +686,54 @@
                         selectedDepartments.add(dept);
                     } else {
                         selectedDepartments.delete(dept);
+                        // Если снимаем department, то очищаем и jobs для него
+                        if (selectedDepartments.size === 0) {
+                            selectedJobs.clear();
+                            document.getElementById('jobsSection').style.display = 'none';
+                            document.querySelectorAll('#jobsButtonsGroup .filter-btn').forEach(b => b.classList.remove('active'));
+                        }
                     }
+                    updateJobsButtons();
                     applyFilters();
                     updateClearButton();
                 });
                 deptGroup.appendChild(btn);
             });
 
-            // Create jobs buttons
+            // Show filter buttons container
+            document.getElementById('filterButtonsContainer').classList.add('active');
+        }
+
+        function updateJobsButtons() {
+            const jobsSection = document.getElementById('jobsSection');
             const jobsGroup = document.getElementById('jobsButtonsGroup');
+
+            // Если ни одного department не выбрано - скрываем jobs
+            if (selectedDepartments.size === 0) {
+                jobsSection.style.display = 'none';
+                return;
+            }
+
+            // Получаем unique jobs только для выбранных departments
+            const jobsForSelectedDepts = new Set();
+            currentData.forEach(crew => {
+                if (selectedDepartments.has(crew.department)) {
+                    jobsForSelectedDepts.add(crew.job);
+                }
+            });
+
+            // Обновляем название department в заголовке
+            const deptName = Array.from(selectedDepartments)[0];
+            document.getElementById('selectedDeptName').textContent = deptName;
+
+            // Создаем кнопки jobs для выбранного department
             jobsGroup.innerHTML = '';
-            Array.from(jobs).sort().forEach(job => {
+            Array.from(jobsForSelectedDepts).sort().forEach(job => {
                 const btn = document.createElement('button');
                 btn.className = 'filter-btn';
+                if (selectedJobs.has(job)) {
+                    btn.classList.add('active');
+                }
                 btn.textContent = job;
                 btn.addEventListener('click', () => {
                     btn.classList.toggle('active');
@@ -715,8 +748,8 @@
                 jobsGroup.appendChild(btn);
             });
 
-            // Show filter buttons container
-            document.getElementById('filterButtonsContainer').classList.add('active');
+            // Показываем section с jobs
+            jobsSection.style.display = 'block';
         }
 
         function applyFilters() {
@@ -753,6 +786,9 @@
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
+
+            // Hide jobs section
+            document.getElementById('jobsSection').style.display = 'none';
 
             applyFilters();
             updateClearButton();
