@@ -90,6 +90,10 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
             logger.debug("LinkdAPI клиент ранее был отключён")
             return None
         try:
+            # Disable SOCKS proxy for LinkdAPI (we don't need it for official API service)
+            old_http_proxy = os.environ.pop("HTTP_PROXY", None)
+            old_https_proxy = os.environ.pop("HTTPS_PROXY", None)
+
             logger.info("Инициализация LinkdAPI клиента...")
             _CLIENT = AsyncLinkdAPI(
                 LINKDAPI_API_KEY,
@@ -98,9 +102,21 @@ async def _get_client() -> Optional[AsyncLinkdAPI]:
                 retry_delay=LINKDAPI_RETRY_DELAY,
             )
             logger.info("LinkdAPI клиент успешно инициализирован")
+
+            # Restore proxy settings
+            if old_http_proxy:
+                os.environ["HTTP_PROXY"] = old_http_proxy
+            if old_https_proxy:
+                os.environ["HTTPS_PROXY"] = old_https_proxy
+
         except Exception as exc:  # pragma: no cover - внешняя зависимость
             logger.warning("Не удалось инициализировать LinkdAPI-клиент: %s", exc)
             _CLIENT = None
+            # Restore proxy settings even on error
+            if 'old_http_proxy' in locals() and old_http_proxy:
+                os.environ["HTTP_PROXY"] = old_http_proxy
+            if 'old_https_proxy' in locals() and old_https_proxy:
+                os.environ["HTTPS_PROXY"] = old_https_proxy
         _CLIENT_INITIALIZED = True
         return _CLIENT
 
