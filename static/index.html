@@ -331,6 +331,76 @@
             font-size: 0.85em;
             margin-right: 8px;
         }
+
+        .filter-buttons-section {
+            margin-bottom: 20px;
+        }
+
+        .filter-buttons-section h4 {
+            font-size: 0.95em;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .filter-buttons-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .filter-btn:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .filter-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+            font-weight: 600;
+        }
+
+        .filter-buttons-container {
+            display: none;
+        }
+
+        .filter-buttons-container.active {
+            display: block;
+        }
+
+        .clear-filters-btn {
+            padding: 8px 16px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+
+        .clear-filters-btn:hover {
+            background: #d32f2f;
+        }
+
+        .clear-filters-btn.hidden {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -414,6 +484,22 @@
                     <button class="btn btn-secondary" id="exportBtn">📥 Экспорт в Excel</button>
                 </div>
 
+                <!-- Filter Buttons -->
+                <div class="filter-buttons-container" id="filterButtonsContainer">
+                    <div class="filter-buttons-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4>🏢 Departments</h4>
+                            <button class="clear-filters-btn hidden" id="clearFiltersBtn">Очистить фильтры</button>
+                        </div>
+                        <div class="filter-buttons-group" id="deptButtonsGroup"></div>
+                    </div>
+
+                    <div class="filter-buttons-section">
+                        <h4>💼 Должности (Jobs)</h4>
+                        <div class="filter-buttons-group" id="jobsButtonsGroup"></div>
+                    </div>
+                </div>
+
                 <div class="table-container">
                     <table>
                         <thead>
@@ -436,6 +522,8 @@
     <script>
         let currentData = [];
         let filteredData = [];
+        let selectedDepartments = new Set();
+        let selectedJobs = new Set();
 
         // Tab switching
         document.querySelectorAll('.tab').forEach(tab => {
@@ -572,18 +660,112 @@
 
         // Filter
         const filterInput = document.getElementById('filterInput');
-        filterInput.addEventListener('input', (e) => {
-            const query = e.target.value.toLowerCase();
+        filterInput.addEventListener('input', applyFilters);
 
-            filteredData = currentData.filter(crew =>
-                crew.name.toLowerCase().includes(query) ||
-                crew.job.toLowerCase().includes(query) ||
-                crew.department.toLowerCase().includes(query) ||
-                crew.movie_title.toLowerCase().includes(query)
-            );
+        // Filter buttons
+        const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+        clearFiltersBtn.addEventListener('click', clearAllFilters);
+
+        function createFilterButtons() {
+            const departments = new Set();
+            const jobs = new Set();
+
+            currentData.forEach(crew => {
+                departments.add(crew.department);
+                jobs.add(crew.job);
+            });
+
+            // Create department buttons
+            const deptGroup = document.getElementById('deptButtonsGroup');
+            deptGroup.innerHTML = '';
+            Array.from(departments).sort().forEach(dept => {
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.textContent = dept;
+                btn.addEventListener('click', () => {
+                    btn.classList.toggle('active');
+                    if (btn.classList.contains('active')) {
+                        selectedDepartments.add(dept);
+                    } else {
+                        selectedDepartments.delete(dept);
+                    }
+                    applyFilters();
+                    updateClearButton();
+                });
+                deptGroup.appendChild(btn);
+            });
+
+            // Create jobs buttons
+            const jobsGroup = document.getElementById('jobsButtonsGroup');
+            jobsGroup.innerHTML = '';
+            Array.from(jobs).sort().forEach(job => {
+                const btn = document.createElement('button');
+                btn.className = 'filter-btn';
+                btn.textContent = job;
+                btn.addEventListener('click', () => {
+                    btn.classList.toggle('active');
+                    if (btn.classList.contains('active')) {
+                        selectedJobs.add(job);
+                    } else {
+                        selectedJobs.delete(job);
+                    }
+                    applyFilters();
+                    updateClearButton();
+                });
+                jobsGroup.appendChild(btn);
+            });
+
+            // Show filter buttons container
+            document.getElementById('filterButtonsContainer').classList.add('active');
+        }
+
+        function applyFilters() {
+            const textQuery = filterInput.value.toLowerCase();
+
+            filteredData = currentData.filter(crew => {
+                // Text filter
+                const textMatch = !textQuery ||
+                    crew.name.toLowerCase().includes(textQuery) ||
+                    crew.job.toLowerCase().includes(textQuery) ||
+                    crew.department.toLowerCase().includes(textQuery) ||
+                    crew.movie_title.toLowerCase().includes(textQuery);
+
+                // Department filter
+                const deptMatch = selectedDepartments.size === 0 ||
+                    selectedDepartments.has(crew.department);
+
+                // Jobs filter
+                const jobMatch = selectedJobs.size === 0 ||
+                    selectedJobs.has(crew.job);
+
+                return textMatch && deptMatch && jobMatch;
+            });
 
             renderTable();
-        });
+        }
+
+        function clearAllFilters() {
+            selectedDepartments.clear();
+            selectedJobs.clear();
+            filterInput.value = '';
+
+            // Remove active class from all buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            applyFilters();
+            updateClearButton();
+        }
+
+        function updateClearButton() {
+            const clearBtn = document.getElementById('clearFiltersBtn');
+            if (selectedDepartments.size === 0 && selectedJobs.size === 0 && filterInput.value === '') {
+                clearBtn.classList.add('hidden');
+            } else {
+                clearBtn.classList.remove('hidden');
+            }
+        }
 
         // Export
         const exportBtn = document.getElementById('exportBtn');
@@ -646,7 +828,16 @@
             document.getElementById('totalMovies').textContent = data.processed_movies.length;
             document.getElementById('totalCrew').textContent = data.total_vfx_crew;
 
+            // Reset filters
+            selectedDepartments.clear();
+            selectedJobs.clear();
+            filterInput.value = '';
+
+            // Create filter buttons
+            createFilterButtons();
+
             renderTable();
+            updateClearButton();
 
             document.getElementById('results').classList.add('active');
         }
