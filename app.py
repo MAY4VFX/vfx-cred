@@ -151,10 +151,16 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[str]:
         # Check movie results
         if data.get("movie_results"):
             tmdb_id = str(data["movie_results"][0]["id"])
-            print(f"DEBUG: Found TMDB ID {tmdb_id} for IMDB {imdb_id}")
+            print(f"DEBUG: Found TMDB movie ID {tmdb_id} for IMDB {imdb_id}")
             return tmdb_id
 
-        print(f"DEBUG: No movie results found for {imdb_id}")
+        # Also check TV results (for completeness, though we mainly process movies)
+        if data.get("tv_results"):
+            tmdb_id = str(data["tv_results"][0]["id"])
+            print(f"DEBUG: Found TMDB TV ID {tmdb_id} for IMDB {imdb_id} (TV series)")
+            return tmdb_id
+
+        print(f"DEBUG: No movie/TV results found for {imdb_id}, response: {data}")
         return None
     except Exception as e:
         print(f"Error converting IMDB ID {imdb_id}: {e}")
