@@ -209,7 +209,18 @@ def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str) -> List[CrewM
         department = member.get("department", "")
         name = member.get("name", "")
 
-        if is_vfx_job(job, department):
+        # Only include VFX and Visual Effects department members
+        # Exclude general production roles like Producer, Executive Producer, etc.
+        if department and department.lower() == "visual effects":
+            vfx_crew.append(CrewMember(
+                name=name,
+                job=job,
+                department=department,
+                movie_title=movie_title,
+                imdb_id=imdb_id
+            ))
+        elif is_vfx_job(job, department) and department and department.lower() != "production":
+            # For other departments, apply VFX keyword filter but exclude Production
             vfx_crew.append(CrewMember(
                 name=name,
                 job=job,
@@ -304,7 +315,8 @@ async def upload_csv(file: UploadFile = File(...)):
                 })
                 continue
 
-            movie_title = movie_details.get("title", title or "Unknown")
+            # Handle both movies (title) and TV shows (name)
+            movie_title = movie_details.get("title") or movie_details.get("name") or title or "Unknown"
             vfx_crew = filter_vfx_crew(credits, movie_title, imdb_id or "N/A")
 
             all_vfx_crew.extend([member.dict() for member in vfx_crew])
@@ -368,7 +380,8 @@ async def search_movie(movie: MovieRequest):
         if not credits:
             raise HTTPException(status_code=404, detail="Credits not found")
 
-        movie_title = movie_details.get("title", movie.title or "Unknown")
+        # Handle both movies (title) and TV shows (name)
+        movie_title = movie_details.get("title") or movie_details.get("name") or movie.title or "Unknown"
         vfx_crew = filter_vfx_crew(credits, movie_title, movie.imdb_id or "N/A")
 
         return {
@@ -378,7 +391,7 @@ async def search_movie(movie: MovieRequest):
                 "imdb_id": movie.imdb_id or "N/A",
                 "tmdb_id": tmdb_id,
                 "overview": movie_details.get("overview", ""),
-                "release_date": movie_details.get("release_date", "")
+                "release_date": movie_details.get("release_date") or movie_details.get("first_air_date", "")
             },
             "vfx_crew": [member.dict() for member in vfx_crew],
             "total_vfx_crew": len(vfx_crew)
