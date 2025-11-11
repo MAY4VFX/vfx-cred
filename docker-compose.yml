@@ -5,12 +5,12 @@ services:
     build: .
     container_name: vfx-credits-filter
     ports:
-      - "8000:8000"
+      - "8010:8010"
     environment:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - TMDB_BASE_URL=https://api.themoviedb.org/3
       - HOST=0.0.0.0
-      - PORT=8000
+      - PORT=8010
     env_file:
       - .env
     restart: unless-stopped
