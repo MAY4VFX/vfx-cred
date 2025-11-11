@@ -79,26 +79,69 @@ def get_session_with_ssl_adapter():
     session.mount('http://', SSLAdapter())
     return session
 
-# VFX-related job titles to filter
-VFX_JOBS = [
+# ============================================================================
+# VFX FILTERING CONFIGURATION - CUSTOMIZE THIS!
+# ============================================================================
+
+# Priority 1: Departments to ALWAYS include (all jobs from these departments)
+VFX_DEPARTMENTS = {
+    "Visual Effects"  # Always include all roles from this department
+}
+
+# Priority 2: Specific jobs to include (from any department)
+VFX_SPECIFIC_JOBS = {
+    # Visual Effects roles
+    "Visual Effects Supervisor",
+    "Visual Effects Producer",
+    "Special Effects Supervisor",
+    "Animation Supervisor",
+    "Compositing Supervisor",
+    "Character Designer",
+
+    # Effects and technical
+    "Special Effects Technician",
+    "Special Effects Manager",
+    "Special Effects Makeup Artist",
+    "Executive Visual Effects Producer",
+
+    # Art and Design
+    "Production Design",
+    "Set Designer",
+    "Concept Artist",
+    "Prop Designer",
+    "Set Decoration",
+
+    # Camera and Lighting
+    "Director of Photography",
+    "Gaffer",
+
+    # Sound and Music
+    "Sound Designer",
+    "Sound Effects Editor",
+    "Music Editor",
+    "Original Music Composer"
+}
+
+# Priority 3: Keywords to match in job titles (if not in above lists)
+VFX_KEYWORDS = [
     "vfx",
     "visual effects",
     "supervisor",
-    "producer",
-    "coordinator",
-    "composit",
     "animator",
-    "cg",
-    "3d",
+    "composit",
     "effects",
     "digital",
-    "matte painter",
-    "rotoscop",
+    "cg",
+    "3d",
     "tracking",
-    "lighting",
     "rendering",
     "fx"
 ]
+
+# Departments to EXCLUDE (even if jobs match VFX keywords)
+EXCLUDE_DEPARTMENTS = {
+    "Production"  # Exclude general production roles like Producer, Executive Producer
+}
 
 
 class MovieRequest(BaseModel):
@@ -127,9 +170,33 @@ def extract_imdb_id(url_or_id: str) -> Optional[str]:
 
 
 def is_vfx_job(job: str, department: str) -> bool:
-    """Check if job/department is VFX-related"""
+    """Check if job should be included in VFX crew results
+
+    Filtering priority:
+    1. If department is in VFX_DEPARTMENTS → include ALL jobs from it
+    2. If department is in EXCLUDE_DEPARTMENTS → exclude (even if job matches)
+    3. If job is in VFX_SPECIFIC_JOBS → include
+    4. If job contains VFX_KEYWORDS → include
+    5. Otherwise → exclude
+    """
+    # Priority 1: Always include from VFX departments
+    if department in VFX_DEPARTMENTS:
+        return True
+
+    # Priority 2: Always exclude from these departments
+    if department in EXCLUDE_DEPARTMENTS:
+        return False
+
+    # Priority 3: Check if this specific job is listed
+    if job in VFX_SPECIFIC_JOBS:
+        return True
+
+    # Priority 4: Check if job contains VFX keywords
     text = f"{job} {department}".lower()
-    return any(vfx_keyword in text for vfx_keyword in VFX_JOBS)
+    if any(keyword in text for keyword in VFX_KEYWORDS):
+        return True
+
+    return False
 
 
 def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[Dict]:
@@ -190,7 +257,7 @@ def get_movie_details(tmdb_id: str, media_type: str = "movie") -> Optional[Dict]
 
 
 def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str) -> List[CrewMember]:
-    """Filter VFX crew members from credits"""
+    """Filter VFX crew members from credits using configured rules"""
     vfx_crew = []
 
     if not credits or "crew" not in credits:
@@ -201,18 +268,7 @@ def filter_vfx_crew(credits: Dict, movie_title: str, imdb_id: str) -> List[CrewM
         department = member.get("department", "")
         name = member.get("name", "")
 
-        # Only include VFX and Visual Effects department members
-        # Exclude general production roles like Producer, Executive Producer, etc.
-        if department and department.lower() == "visual effects":
-            vfx_crew.append(CrewMember(
-                name=name,
-                job=job,
-                department=department,
-                movie_title=movie_title,
-                imdb_id=imdb_id
-            ))
-        elif is_vfx_job(job, department) and department and department.lower() != "production":
-            # For other departments, apply VFX keyword filter but exclude Production
+        if is_vfx_job(job, department):
             vfx_crew.append(CrewMember(
                 name=name,
                 job=job,
