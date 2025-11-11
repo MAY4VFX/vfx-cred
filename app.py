@@ -49,16 +49,27 @@ TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 TMDB_BASE_URL = os.getenv("TMDB_BASE_URL", "https://api.themoviedb.org/3")
 
 # Proxy configuration for bypassing geo-blocking
+# Use socks5h:// to resolve DNS through SOCKS5 proxy
 PROXIES = {}
 if os.getenv("HTTP_PROXY"):
-    PROXIES["http"] = os.getenv("HTTP_PROXY")
+    proxy_url = os.getenv("HTTP_PROXY")
+    # Convert socks5:// to socks5h:// for DNS resolution through proxy
+    proxy_url = proxy_url.replace("socks5://", "socks5h://")
+    PROXIES["http"] = proxy_url
 if os.getenv("HTTPS_PROXY"):
-    PROXIES["https"] = os.getenv("HTTPS_PROXY")
+    proxy_url = os.getenv("HTTPS_PROXY")
+    # Convert socks5:// to socks5h:// for DNS resolution through proxy
+    proxy_url = proxy_url.replace("socks5://", "socks5h://")
+    PROXIES["https"] = proxy_url
 # Support both uppercase and lowercase
 if os.getenv("http_proxy") and not PROXIES.get("http"):
-    PROXIES["http"] = os.getenv("http_proxy")
+    proxy_url = os.getenv("http_proxy")
+    proxy_url = proxy_url.replace("socks5://", "socks5h://")
+    PROXIES["http"] = proxy_url
 if os.getenv("https_proxy") and not PROXIES.get("https"):
-    PROXIES["https"] = os.getenv("https_proxy")
+    proxy_url = os.getenv("https_proxy")
+    proxy_url = proxy_url.replace("socks5://", "socks5h://")
+    PROXIES["https"] = proxy_url
 
 # Create session with SSL adapter for SOCKS5 proxy support
 def get_session_with_ssl_adapter():
