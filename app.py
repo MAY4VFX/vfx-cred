@@ -224,19 +224,26 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[Dict]:
             "api_key": TMDB_API_KEY,
             "external_source": "imdb_id"
         }
+        logger.info(f"Looking up IMDB ID {imdb_id} in TMDb...")
         response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
         response.raise_for_status()
         data = response.json()
 
+        logger.info(f"TMDb response keys: {list(data.keys())}")
+        logger.info(f"  movie_results: {len(data.get('movie_results', []))} items")
+        logger.info(f"  tv_episode_results: {len(data.get('tv_episode_results', []))} items")
+        logger.info(f"  tv_results: {len(data.get('tv_results', []))} items")
+
         # Check movie results
         if data.get("movie_results"):
             tmdb_id = str(data["movie_results"][0]["id"])
+            logger.info(f"Found as MOVIE: {tmdb_id}")
             return {"id": tmdb_id, "type": "movie"}
 
         # Check TV episode results (PRIORITY - check before TV series)
         if data.get("tv_episode_results"):
             episode = data["tv_episode_results"][0]
-            logger.info(f"Detected as TV episode: Season {episode['season_number']} Episode {episode['episode_number']}")
+            logger.info(f"Found as TV EPISODE: S{episode['season_number']}E{episode['episode_number']} of show {episode['show_id']}")
             return {
                 "id": str(episode["show_id"]),
                 "type": "tv_episode",
@@ -248,11 +255,13 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[Dict]:
         # Also check TV series results
         if data.get("tv_results"):
             tmdb_id = str(data["tv_results"][0]["id"])
+            logger.info(f"Found as TV SERIES: {tmdb_id}")
             return {"id": tmdb_id, "type": "tv"}
 
+        logger.warning(f"No results found in TMDb for IMDB ID {imdb_id}")
         return None
     except Exception as e:
-        logger.error(f"Error converting IMDB ID {imdb_id}: {e}")
+        logger.error(f"Error converting IMDB ID {imdb_id}: {e}", exc_info=True)
         return None
 
 
