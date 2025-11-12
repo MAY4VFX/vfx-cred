@@ -185,6 +185,67 @@ def extract_imdb_id(url_or_id: str) -> Optional[str]:
     return None
 
 
+def get_series_imdb_id_from_episode(episode_imdb_id: str) -> Optional[str]:
+    """
+    Try to detect if an IMDB ID is an episode and fetch the parent series IMDB ID
+    by parsing the IMDB page HTML.
+
+    Returns the parent series IMDB ID if successful, None otherwise.
+    """
+    try:
+        logger = logging.getLogger(__name__)
+        imdb_url = f"https://www.imdb.com/title/{episode_imdb_id}/"
+        logger.debug(f"Fetching IMDB page to detect episode parent series: {imdb_url}")
+
+        session = get_session_with_ssl_adapter()
+        response = session.get(
+            imdb_url,
+            proxies=PROXIES if PROXIES else None,
+            timeout=10,
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        response.raise_for_status()
+        html = response.text
+
+        # Look for parent series link in HTML
+        # Pattern 1: <a href="/title/tt[0-9]+/">Series Name</a> in episode page
+        # Pattern 2: TV episode indicator text
+
+        # Check if it's marked as episode
+        if 'Episode' in html and 'Season' in html:
+            logger.debug(f"Detected as TV episode based on HTML content")
+
+            # Try to find parent series link
+            # Look for navigation pattern like: <a href="/title/ttXXXXXX/">
+            # that appears in the episode page header
+            series_match = re.search(r'href="/title/(tt\d+)/"[^>]*>.*?[\w\s&-]+</a>', html)
+            if series_match:
+                parent_series_id = series_match.group(1)
+                # Verify it's different from the episode ID
+                if parent_series_id != episode_imdb_id:
+                    logger.info(f"Found parent series ID: {parent_series_id} for episode {episode_imdb_id}")
+                    return parent_series_id
+
+        logger.debug(f"Could not determine if {episode_imdb_id} is an episode or find parent series")
+        return None
+
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Error detecting episode parent series for {episode_imdb_id}: {e}")
+        return None
+
+
+def resolve_episode_to_series(imdb_id: str) -> str:
+    """
+    If the provided IMDB ID is an episode, try to resolve it to the parent series.
+    Returns the parent series IMDB ID if found, otherwise returns the original ID.
+    """
+    parent_series_id = get_series_imdb_id_from_episode(imdb_id)
+    if parent_series_id:
+        return parent_series_id
+    return imdb_id
+
+
 def is_vfx_job(job: str, department: str) -> bool:
     """Check if job should be included in VFX crew results
 
@@ -450,6 +511,13 @@ async def search_movie(movie: MovieRequest):
         if movie.imdb_id:
             imdb_id = extract_imdb_id(movie.imdb_id)
             if imdb_id:
+                # Try to resolve episode IDs to parent series
+                logger.info(f"Checking if {imdb_id} is an episode...")
+                resolved_imdb_id = resolve_episode_to_series(imdb_id)
+                if resolved_imdb_id != imdb_id:
+                    logger.info(f"Resolved episode {imdb_id} to series {resolved_imdb_id}")
+                    imdb_id = resolved_imdb_id
+
                 tmdb_info = get_tmdb_id_from_imdb(imdb_id)
 
         if not tmdb_info and movie.title:
