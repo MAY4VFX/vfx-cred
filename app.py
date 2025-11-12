@@ -526,10 +526,6 @@ async def search_movie(movie: MovieRequest):
         if not credits:
             raise HTTPException(status_code=404, detail="Credits not found")
 
-        # Log total crew from TMDb before filtering
-        total_tmdb_crew = len(credits.get("crew", []))
-        logger.info(f"Total crew members from TMDb: {total_tmdb_crew}")
-
         # Handle both movies (title) and TV shows (name)
         movie_title = movie_details.get("title") or movie_details.get("name") or movie.title or "Unknown"
         vfx_crew = filter_vfx_crew(credits, movie_title, movie.imdb_id or "N/A")
