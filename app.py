@@ -185,67 +185,6 @@ def extract_imdb_id(url_or_id: str) -> Optional[str]:
     return None
 
 
-def get_series_imdb_id_from_episode(episode_imdb_id: str) -> Optional[str]:
-    """
-    Try to detect if an IMDB ID is an episode and fetch the parent series IMDB ID
-    by parsing the IMDB page HTML.
-
-    Returns the parent series IMDB ID if successful, None otherwise.
-    """
-    try:
-        logger = logging.getLogger(__name__)
-        imdb_url = f"https://www.imdb.com/title/{episode_imdb_id}/"
-        logger.debug(f"Fetching IMDB page to detect episode parent series: {imdb_url}")
-
-        session = get_session_with_ssl_adapter()
-        response = session.get(
-            imdb_url,
-            proxies=PROXIES if PROXIES else None,
-            timeout=10,
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        )
-        response.raise_for_status()
-        html = response.text
-
-        # Look for parent series link in HTML
-        # Pattern 1: <a href="/title/tt[0-9]+/">Series Name</a> in episode page
-        # Pattern 2: TV episode indicator text
-
-        # Check if it's marked as episode
-        if 'Episode' in html and 'Season' in html:
-            logger.debug(f"Detected as TV episode based on HTML content")
-
-            # Try to find parent series link
-            # Look for navigation pattern like: <a href="/title/ttXXXXXX/">
-            # that appears in the episode page header
-            series_match = re.search(r'href="/title/(tt\d+)/"[^>]*>.*?[\w\s&-]+</a>', html)
-            if series_match:
-                parent_series_id = series_match.group(1)
-                # Verify it's different from the episode ID
-                if parent_series_id != episode_imdb_id:
-                    logger.info(f"Found parent series ID: {parent_series_id} for episode {episode_imdb_id}")
-                    return parent_series_id
-
-        logger.debug(f"Could not determine if {episode_imdb_id} is an episode or find parent series")
-        return None
-
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.debug(f"Error detecting episode parent series for {episode_imdb_id}: {e}")
-        return None
-
-
-def resolve_episode_to_series(imdb_id: str) -> str:
-    """
-    If the provided IMDB ID is an episode, try to resolve it to the parent series.
-    Returns the parent series IMDB ID if found, otherwise returns the original ID.
-    """
-    parent_series_id = get_series_imdb_id_from_episode(imdb_id)
-    if parent_series_id:
-        return parent_series_id
-    return imdb_id
-
-
 def is_vfx_job(job: str, department: str) -> bool:
     """Check if job should be included in VFX crew results
 
@@ -277,7 +216,7 @@ def is_vfx_job(job: str, department: str) -> bool:
 
 
 def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[Dict]:
-    """Convert IMDB ID to TMDb ID, returns dict with id and type (movie/tv)"""
+    """Convert IMDB ID to TMDb ID, returns dict with id, type, and episode info if applicable"""
     try:
         session = get_session_with_ssl_adapter()
         url = f"{TMDB_BASE_URL}/find/{imdb_id}"
@@ -294,14 +233,41 @@ def get_tmdb_id_from_imdb(imdb_id: str) -> Optional[Dict]:
             tmdb_id = str(data["movie_results"][0]["id"])
             return {"id": tmdb_id, "type": "movie"}
 
-        # Also check TV results
+        # Check TV episode results (PRIORITY - check before TV series)
+        if data.get("tv_episode_results"):
+            episode = data["tv_episode_results"][0]
+            logger.info(f"Detected as TV episode: Season {episode['season_number']} Episode {episode['episode_number']}")
+            return {
+                "id": str(episode["show_id"]),
+                "type": "tv_episode",
+                "season_number": episode["season_number"],
+                "episode_number": episode["episode_number"],
+                "episode_name": episode.get("name")
+            }
+
+        # Also check TV series results
         if data.get("tv_results"):
             tmdb_id = str(data["tv_results"][0]["id"])
             return {"id": tmdb_id, "type": "tv"}
 
         return None
     except Exception as e:
-        print(f"Error converting IMDB ID {imdb_id}: {e}")
+        logger.error(f"Error converting IMDB ID {imdb_id}: {e}")
+        return None
+
+
+def get_episode_credits(show_id: str, season_number: int, episode_number: int) -> Optional[Dict]:
+    """Get credits for a specific TV episode"""
+    try:
+        session = get_session_with_ssl_adapter()
+        url = f"{TMDB_BASE_URL}/tv/{show_id}/season/{season_number}/episode/{episode_number}/credits"
+        params = {"api_key": TMDB_API_KEY}
+        logger.info(f"Fetching episode credits: S{season_number:02d}E{episode_number:02d}")
+        response = session.get(url, params=params, proxies=PROXIES if PROXIES else None, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error getting episode credits for TV show {show_id} S{season_number}E{episode_number}: {e}")
         return None
 
 
@@ -315,7 +281,7 @@ def get_movie_credits(tmdb_id: str, media_type: str = "movie") -> Optional[Dict]
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        print(f"Error getting {media_type} credits for TMDb ID {tmdb_id}: {e}")
+        logger.error(f"Error getting {media_type} credits for TMDb ID {tmdb_id}: {e}")
         return None
 
 
@@ -511,13 +477,6 @@ async def search_movie(movie: MovieRequest):
         if movie.imdb_id:
             imdb_id = extract_imdb_id(movie.imdb_id)
             if imdb_id:
-                # Try to resolve episode IDs to parent series
-                logger.info(f"Checking if {imdb_id} is an episode...")
-                resolved_imdb_id = resolve_episode_to_series(imdb_id)
-                if resolved_imdb_id != imdb_id:
-                    logger.info(f"Resolved episode {imdb_id} to series {resolved_imdb_id}")
-                    imdb_id = resolved_imdb_id
-
                 tmdb_info = get_tmdb_id_from_imdb(imdb_id)
 
         if not tmdb_info and movie.title:
@@ -542,9 +501,18 @@ async def search_movie(movie: MovieRequest):
         tmdb_id = tmdb_info.get("id")
         media_type = tmdb_info.get("type", "movie")
 
-        # Get movie/TV details and credits
-        movie_details = get_movie_details(tmdb_id, media_type)
-        credits = get_movie_credits(tmdb_id, media_type)
+        # Get movie/TV details
+        # For episodes, we still need series details but will fetch episode-specific credits
+        if media_type == "tv_episode":
+            movie_details = get_movie_details(tmdb_id, "tv")
+            season_number = tmdb_info.get("season_number")
+            episode_number = tmdb_info.get("episode_number")
+            episode_name = tmdb_info.get("episode_name", "")
+            logger.info(f"Fetching episode-specific credits for S{season_number}E{episode_number}: {episode_name}")
+            credits = get_episode_credits(tmdb_id, season_number, episode_number)
+        else:
+            movie_details = get_movie_details(tmdb_id, media_type)
+            credits = get_movie_credits(tmdb_id, media_type)
 
         if not credits:
             raise HTTPException(status_code=404, detail="Credits not found")
