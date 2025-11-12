@@ -134,10 +134,11 @@ VFX_SPECIFIC_JOBS = {
 }
 
 # Priority 3: Keywords to match in job titles (if not in above lists)
+# NOTE: "supervisor" and "producer" are NOT included as they are too generic
+# Use VFX_SPECIFIC_JOBS for specific VFX supervisor/producer roles
 VFX_KEYWORDS = [
     "vfx",
     "visual effects",
-    "supervisor",
     "animator",
     "composit",
     "effects",
